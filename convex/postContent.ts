@@ -6,23 +6,7 @@
 
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-
-const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
-const PLATFORM_BASE_URL = "https://interplanetary-fund.vercel.app";
-
-function generatePayPalLink(campaignTitle: string): string {
-  const params = new URLSearchParams({
-    cmd: "_donations",
-    business: BUSINESS_EMAIL,
-    item_name: `${campaignTitle} - Interplanetary Fund`,
-    currency_code: "USD",
-  });
-  return `https://www.paypal.com/donate/?${params.toString()}`;
-}
-
-function generateCampaignPlatformLink(campaignId: string): string {
-  return `${PLATFORM_BASE_URL}/?campaignId=${encodeURIComponent(campaignId)}`;
-}
+import { PLATFORM_BASE_URL, generateCampaignPlatformLink, generatePayPalLink } from "./utils";
 
 // Generate campaign post content with embedded PayPal link
 export const generatePostContent = mutation({

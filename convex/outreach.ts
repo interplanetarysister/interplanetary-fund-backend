@@ -6,24 +6,7 @@
 
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-
-
-const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
-const PLATFORM_BASE_URL = "https://interplanetary-fund.vercel.app";
-
-function generatePayPalLink(campaignTitle: string): string {
-  const params = new URLSearchParams({
-    cmd: "_donations",
-    business: BUSINESS_EMAIL,
-    item_name: `${campaignTitle} - Interplanetary Fund`,
-    currency_code: "USD",
-  });
-  return `https://www.paypal.com/donate/?${params.toString()}`;
-}
-
-function generateCampaignPlatformLink(campaignId: string): string {
-  return `${PLATFORM_BASE_URL}/?campaignId=${encodeURIComponent(campaignId)}`;
-}
+import { generateCampaignPlatformLink, generatePayPalLink } from "./utils";
 
 // =====================================================
 // FACEBOOK OUTREACH AGENT

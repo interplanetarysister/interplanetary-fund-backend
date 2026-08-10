@@ -54,7 +54,9 @@ export function PayPalDonateButton({
           paymentMethod: "paypal_fallback",
           status: "pending",
         });
-      } catch {}
+      } catch (error) {
+        console.error("Failed to record fallback donation", error);
+      }
       const paypalUrl = new URL("https://www.paypal.com/donate");
       paypalUrl.searchParams.set("cmd", "_donations");
       paypalUrl.searchParams.set("business", businessEmail);
