@@ -73,6 +73,34 @@ export default apiHandler(async (ctx, input) => {
       return acc;
     }, { updated: 0, created: 0 })
   );
+  const fetchAllCampaigns = async () => {
+    const allCampaigns: any[] = [];
+    let cursor: string | null = null;
+    let isDone = false;
+    let pagesFetched = 0;
+    const maxPages = 100;
+
+    while (!isDone && pagesFetched < maxPages) {
+      const previousLength = allCampaigns.length;
+      const response = await convexQuery("campaigns:getCampaigns", {
+        paginationOpts: { numItems: 500, cursor },
+      });
+      pagesFetched += 1;
+      if (Array.isArray(response)) {
+        allCampaigns.push(...response);
+        break;
+      }
+      allCampaigns.push(...normalizeList(response));
+      isDone = !!response?.isDone;
+      cursor = response?.continueCursor || null;
+      if (allCampaigns.length === previousLength) {
+        isDone = true;
+      }
+      if (!cursor) isDone = true;
+    }
+
+    return allCampaigns;
+  };
 
   const syncPlatformsParallel = async (platforms: any[]) => {
     const results: Array<{ platform: string; campaign_id: string; status: string }> = [];
@@ -92,6 +120,7 @@ export default apiHandler(async (ctx, input) => {
 
         if (existing.length > 0) {
           await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
+          await Promise.all(existing.slice(1).map((row: any) => ctx.entities.PlatformConnection.delete(row._id)));
           return { platform: getPlatformName(platform), campaign_id: getPlatformCampaignId(platform), status: "updated" };
         }
 
@@ -149,15 +178,13 @@ export default apiHandler(async (ctx, input) => {
     }
 
     case "sync_campaigns": {
-      const campaignsResponse = await convexQuery("campaigns:getCampaigns", {
-        paginationOpts: { numItems: 500, cursor: null },
-      });
-      const campaigns = normalizeList(campaignsResponse);
+      const campaigns = await fetchAllCampaigns();
       for (const camp of campaigns) {
         const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: getCampaignIfId(camp) }).list();
         const campData = mapCampaignData(camp);
         if (existing.length > 0) {
           await ctx.entities.MonitoredCampaign.update(existing[0]._id, campData);
+          await Promise.all(existing.slice(1).map((row: any) => ctx.entities.MonitoredCampaign.delete(row._id)));
         } else {
           await ctx.entities.MonitoredCampaign.create(campData);
         }
@@ -186,16 +213,13 @@ export default apiHandler(async (ctx, input) => {
     }
 
     case "full_sync": {
-      const [agents, campaignsResponse, platforms, balances, stats] = await Promise.all([
+      const [agents, platforms, balances, stats, campaigns] = await Promise.all([
         convexQuery("agents:getAgents", {}),
-        convexQuery("campaigns:getCampaigns", {
-          paginationOpts: { numItems: 500, cursor: null },
-        }),
         convexQuery("campaigns:getExternalPlatforms", {}),
         convexQuery("treasury:aggregateBalances", {}),
         convexQuery("agents:getAgentStats", {}),
+        fetchAllCampaigns(),
       ]);
-      const campaigns = normalizeList(campaignsResponse);
       const normalizedPlatforms = normalizeList(platforms);
       
       // Sync agents to Base44 entities
@@ -244,6 +268,7 @@ export default apiHandler(async (ctx, input) => {
         const campData = mapCampaignData(camp);
         if (existing.length > 0) {
           await ctx.entities.MonitoredCampaign.update(existing[0]._id, campData);
+          await Promise.all(existing.slice(1).map((row: any) => ctx.entities.MonitoredCampaign.delete(row._id)));
         } else {
           await ctx.entities.MonitoredCampaign.create(campData);
         }
