@@ -55,7 +55,7 @@ export const generatePostContent = mutation({
       content: fullContent,
       paypalLink,
       campaignLink,
-      linkAttachment: isFacebook ? paypalLink : undefined,
+      linkAttachment: isFacebook ? campaignLink : undefined,
       platform: args.platform,
       campaignId: args.campaignId,
       characterCount: fullContent.length,
