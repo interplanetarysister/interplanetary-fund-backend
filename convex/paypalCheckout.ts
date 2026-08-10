@@ -65,7 +65,7 @@ export const confirmDonation = mutation({
       throw new Error("Donation not found");
     }
     if (donation.status === "completed") {
-      if (donation.paypalTransactionId && donation.paypalTransactionId !== args.paypalTransactionId) {
+      if (donation.paypalTransactionId !== args.paypalTransactionId) {
         throw new Error("Donation already confirmed with a different PayPal transaction ID.");
       }
       return { status: "already_confirmed" };

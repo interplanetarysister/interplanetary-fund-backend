@@ -43,8 +43,8 @@ export function PayPalDonateButton({
         donorName: donorName || "Anonymous",
       });
       window.open(session.checkoutUrl, "_blank");
-    } catch {
-      console.error("Checkout session failed; opening direct PayPal link without platform tracking.");
+    } catch (error) {
+      console.error("Checkout session failed; opening direct PayPal link without platform tracking.", error);
       const paypalUrl = new URL("https://www.paypal.com/donate");
       paypalUrl.searchParams.set("cmd", "_donations");
       paypalUrl.searchParams.set("business", businessEmail);
