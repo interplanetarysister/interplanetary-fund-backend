@@ -6,11 +6,7 @@
 
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-
-function normalizeOptionalText(value?: string) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
+import { normalizeOptionalText } from "./utils";
 
 // PRIMITIVE PROCESS CORRECTION — defaults for ALL future campaigns
 export const createCampaign = mutation({

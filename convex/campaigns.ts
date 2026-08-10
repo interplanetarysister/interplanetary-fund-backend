@@ -8,11 +8,7 @@ import { query, mutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { validateDonation } from "./security";
-
-function normalizeOptionalText(value?: string) {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
-}
+import { normalizeOptionalText } from "./utils";
 
 export const getCampaigns = query({
   args: { 

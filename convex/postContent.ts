@@ -112,10 +112,18 @@ export const fixMissingPayPalLinks = mutation({
       const campaignTitle = post.campaignTitle || "Interplanetary Fund";
       const link = generatePayPalLink(campaignTitle);
       const campaignLink = generateCampaignPlatformLink(post.campaignId);
-      const donationBlock = `\n\n🌐 View on Interplanetary Fund: ${campaignLink}\n💝 Donate now (any amount): ${link}\nThank you! 🙏`;
-      
+      const content = post.content || "";
+      const additions: string[] = [];
+      if (!content.includes("interplanetary-fund.vercel.app")) {
+        additions.push(`🌐 View on Interplanetary Fund: ${campaignLink}`);
+      }
+      if (!content.includes("paypal.com/donate")) {
+        additions.push(`💝 Donate now (any amount): ${link}`);
+      }
+      if (additions.length === 0) continue;
+      additions.push("Thank you! 🙏");
       await ctx.db.patch(post._id, {
-        content: (post.content || "") + donationBlock,
+        content: `${content}\n\n${additions.join("\n")}`,
       });
       fixed++;
     }
