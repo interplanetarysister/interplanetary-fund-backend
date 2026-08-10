@@ -13,7 +13,25 @@ import { v } from "convex/values";
 
 const formatUsd = (value: number) => `$${value.toFixed(2)}`;
 
-const buildPlatformInsights = (platforms: any[]) => {
+type TrainingCampaign = {
+  storyPresent: boolean;
+  aiIdealDonors: string;
+  aiPlatforms: string;
+  aiTone: string;
+  aiInterestedOrgs: string;
+  endDate: string;
+  goalAmount: number;
+  externalRaised?: number;
+  raisedAmount: number;
+};
+
+type ExternalPlatformConnection = {
+  platform: string;
+  externalTotal: number;
+  externalDonorCount: number;
+};
+
+const buildPlatformInsights = (platforms: ExternalPlatformConnection[]) => {
   const byPlatform = new Map<string, { platform: string; externalRaised: number; donorCount: number; connectedCampaigns: number }>();
 
   for (const platform of platforms) {
@@ -33,7 +51,7 @@ const buildPlatformInsights = (platforms: any[]) => {
   return Array.from(byPlatform.values()).sort((a, b) => b.externalRaised - a.externalRaised);
 };
 
-const buildSuccessPatterns = (campaigns: any[]) => {
+const buildSuccessPatterns = (campaigns: TrainingCampaign[]) => {
   const successfulCampaigns = campaigns.filter((c) => (c.externalRaised || 0) > 0 || (c.raisedAmount || 0) > 0);
   if (successfulCampaigns.length === 0) {
     return ["No successful campaign data yet — prioritize baseline campaign instrumentation this week."];
@@ -58,7 +76,7 @@ const buildSuccessPatterns = (campaigns: any[]) => {
 export const enforceProtocol = query({
   args: {},
   handler: async (ctx) => {
-    const campaigns = await ctx.db.query("monitoredCampaigns").collect();
+    const campaigns = (await ctx.db.query("monitoredCampaigns").collect()) as TrainingCampaign[];
 
     const results: any[] = [];
     let compliantCount = 0;
@@ -173,8 +191,14 @@ export const weeklyTraining = internalMutation({
 
       if (!campaign.outreachEnabled) violations.push({ standard: "P-1", issue: "Outreach disabled" });
 
-      const missingAi = ["aiTone", "aiIdealDonors", "aiInterestedOrgs", "aiPlatforms"]
-        .filter((f) => !campaign[f as keyof typeof campaign] || (campaign[f as keyof typeof campaign] as string) === "");
+      const missingAi = [
+        { field: "aiTone", value: campaign.aiTone },
+        { field: "aiIdealDonors", value: campaign.aiIdealDonors },
+        { field: "aiInterestedOrgs", value: campaign.aiInterestedOrgs },
+        { field: "aiPlatforms", value: campaign.aiPlatforms },
+      ]
+        .filter(({ value }) => !value || value === "")
+        .map(({ field }) => field);
       if (missingAi.length > 0) violations.push({ standard: "P-2", missing: missingAi });
 
       if (!campaign.storyPresent) violations.push({ standard: "P-3", issue: "No story" });
@@ -200,12 +224,12 @@ export const weeklyTraining = internalMutation({
     const totalGoal = campaigns.reduce((s, c) => s + (c.goalAmount || 0), 0);
     const totalDonors = campaigns.reduce((s, c) => s + (c.donorCount || 0), 0);
     const criticalViolations = allViolations.filter((v) => v.severity === "critical");
-    const connectedPlatforms = await ctx.db.query("externalPlatforms").collect();
+    const connectedPlatforms = (await ctx.db.query("externalPlatforms").collect()) as ExternalPlatformConnection[];
     const platformInsights = buildPlatformInsights(connectedPlatforms);
     const topPlatformInsights = platformInsights.slice(0, 3);
     const successPatterns = buildSuccessPatterns(campaigns);
     const topSuccessPatterns = successPatterns.slice(0, 2);
-    const successPatternSummary = topSuccessPatterns.join(" ");
+    const successPatternSummary = topSuccessPatterns.join(" | ");
     const topPlatformSummary = topPlatformInsights.length > 0
       ? topPlatformInsights.map((p) => `${p.platform}: ${formatUsd(p.externalRaised)} from ${p.donorCount} donors`).join("; ")
       : "No connected platform totals available.";
