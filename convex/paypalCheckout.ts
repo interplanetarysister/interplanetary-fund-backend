@@ -30,6 +30,7 @@ export const createCheckoutSession = mutation({
       donorName: args.donorName,
       message: args.message || "",
       paymentMethod: "paypal",
+      paypalTransactionId: undefined,
       status: "pending",
       createdAt: new Date().toISOString(),
     });
@@ -65,12 +66,16 @@ export const confirmDonation = mutation({
       throw new Error("Donation not found");
     }
     if (donation.status === "completed") {
+      if (donation.paypalTransactionId && donation.paypalTransactionId !== args.paypalTransactionId) {
+        throw new Error("Donation already confirmed with a different PayPal transaction ID.");
+      }
       return { status: "already_confirmed" };
     }
 
     // Mark donation as completed
     await ctx.db.patch(args.donationId, {
       status: "completed",
+      paypalTransactionId: args.paypalTransactionId,
     });
 
     // Update campaign raised amount

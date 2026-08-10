@@ -24,7 +24,6 @@ export function PayPalDonateButton({
   const [showForm, setShowForm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const createCheckoutSession = useMutation(api.paypalCheckout.createCheckoutSession);
-  const recordDonation = useMutation(api.campaigns.recordDonation);
 
   const presetAmounts = [10, 25, 50, 100];
 
@@ -45,18 +44,7 @@ export function PayPalDonateButton({
       });
       window.open(session.checkoutUrl, "_blank");
     } catch {
-      try {
-        await recordDonation({
-          campaignId,
-          campaignTitle,
-          amount: donationAmount,
-          donorName: donorName || "Anonymous",
-          paymentMethod: "paypal_fallback",
-          status: "pending",
-        });
-      } catch (error) {
-        console.error("Failed to record fallback donation", error);
-      }
+      console.error("Checkout session failed; opening direct PayPal link without platform tracking.");
       const paypalUrl = new URL("https://www.paypal.com/donate");
       paypalUrl.searchParams.set("cmd", "_donations");
       paypalUrl.searchParams.set("business", businessEmail);

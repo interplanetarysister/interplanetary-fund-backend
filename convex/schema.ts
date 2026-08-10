@@ -163,6 +163,7 @@ export default defineSchema({
     donorName: v.string(),
     message: v.optional(v.string()),
     paymentMethod: v.string(),
+    paypalTransactionId: v.optional(v.string()),
     status: v.string(),
     createdAt: v.string(),
   }).index("byCampaignId", ["campaignId"]).index("byStatus", ["status"]),
