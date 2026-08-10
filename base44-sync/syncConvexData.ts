@@ -22,6 +22,44 @@ async function convexQuery(path: string, args: Record<string, any> = {}) {
 export default apiHandler(async (ctx, input) => {
   const { action } = input || {};
 
+  const mapCampaignData = (camp: any) => ({
+    if_campaign_id: camp.ifCampaignId,
+    title: camp.title,
+    status: camp.status,
+    category: camp.category,
+    goal_amount: camp.goalAmount,
+    raised_amount: camp.raisedAmount,
+    donor_count: camp.donorCount,
+    outreach_enabled: camp.outreachEnabled,
+    payment_active: camp.paymentActive,
+    story_present: camp.storyPresent,
+    cover_image_present: camp.coverImagePresent,
+    summary: camp.summary,
+    end_date: camp.endDate,
+    ai_priority: camp.aiPriority,
+    ai_tone: camp.aiTone,
+    ai_ideal_donors: camp.aiIdealDonors,
+    ai_interested_orgs: camp.aiInterestedOrgs,
+    ai_platforms: camp.aiPlatforms,
+    last_synced: new Date().toISOString(),
+  });
+
+  const mapPlatformData = (platform: any) => ({
+    platform: platform.platform,
+    kind: platform.kind,
+    display_name: platform.displayName,
+    external_url: platform.externalUrl || "",
+    campaign_id: platform.campaignId,
+    status: platform.status,
+    automation_mode: platform.automationMode || "manual",
+    credentials: platform.credentials || "",
+    external_total: platform.externalTotal ?? 0,
+    external_donor_count: platform.externalDonorCount ?? 0,
+    last_synced: new Date().toISOString(),
+    last_error: platform.lastError || "",
+    history: platform.history || [],
+  });
+
   switch (action) {
     case "sync_agents": {
       const agents = await convexQuery("agents:getAgents");
@@ -67,30 +105,13 @@ export default apiHandler(async (ctx, input) => {
     }
 
     case "sync_campaigns": {
-      const campaigns = await convexQuery("campaigns:getCampaigns");
+      const campaignsResponse = await convexQuery("campaigns:getCampaigns", {
+        paginationOpts: { numItems: 500, cursor: null },
+      });
+      const campaigns = Array.isArray(campaignsResponse) ? campaignsResponse : (campaignsResponse?.page || []);
       for (const camp of campaigns) {
         const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: camp.ifCampaignId }).list();
-        const campData = {
-          title: camp.title,
-          status: camp.status,
-          category: camp.category,
-          goalAmount: camp.goalAmount,
-          raisedAmount: camp.raisedAmount,
-          donorCount: camp.donorCount,
-          outreachEnabled: camp.outreachEnabled,
-          paymentActive: camp.paymentActive,
-          storyPresent: camp.storyPresent,
-          coverImagePresent: camp.coverImagePresent,
-          summary: camp.summary,
-          ifCampaignId: camp.ifCampaignId,
-          lastSynced: new Date().toISOString(),
-          endDate: camp.endDate,
-          aiPriority: camp.aiPriority,
-          aiTone: camp.aiTone,
-          aiIdealDonors: camp.aiIdealDonors,
-          aiInterestedOrgs: camp.aiInterestedOrgs,
-          aiPlatforms: camp.aiPlatforms,
-        };
+        const campData = mapCampaignData(camp);
         if (existing.length > 0) {
           await ctx.entities.MonitoredCampaign.update(existing[0]._id, campData);
         } else {
@@ -100,6 +121,32 @@ export default apiHandler(async (ctx, input) => {
       return { synced: campaigns.length, campaigns: campaigns.map(c => c.title) };
     }
 
+    case "sync_platforms": {
+      const platforms = await convexQuery("campaigns:getExternalPlatforms", {});
+      const results = await Promise.all(platforms.map(async (platform: any) => {
+        const existing = await ctx.entities.PlatformConnection.filter({
+          campaign_id: platform.campaignId,
+          platform: platform.platform,
+        }).list();
+        const platformData = mapPlatformData(platform);
+
+        if (existing.length > 0) {
+          await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
+          return { platform: platform.platform, campaign_id: platform.campaignId, status: "updated" };
+        }
+
+        await ctx.entities.PlatformConnection.create(platformData);
+        return { platform: platform.platform, campaign_id: platform.campaignId, status: "created" };
+      }));
+
+      return {
+        synced: platforms.length,
+        updated: results.filter((r) => r.status === "updated").length,
+        created: results.filter((r) => r.status === "created").length,
+        platforms: results,
+      };
+    }
+
     case "sync_treasury": {
       const balances = await convexQuery("treasury:aggregateBalances");
       const stats = await convexQuery("agents:getAgentStats");
@@ -107,10 +154,16 @@ export default apiHandler(async (ctx, input) => {
     }
 
     case "full_sync": {
-      const agents = await convexQuery("agents:getAgents");
-      const campaigns = await convexQuery("campaigns:getCampaigns");
-      const balances = await convexQuery("treasury:aggregateBalances");
-      const stats = await convexQuery("agents:getAgentStats");
+      const [agents, campaignsResponse, platforms, balances, stats] = await Promise.all([
+        convexQuery("agents:getAgents", {}),
+        convexQuery("campaigns:getCampaigns", {
+          paginationOpts: { numItems: 500, cursor: null },
+        }),
+        convexQuery("campaigns:getExternalPlatforms", {}),
+        convexQuery("treasury:aggregateBalances", {}),
+        convexQuery("agents:getAgentStats", {}),
+      ]);
+      const campaigns = Array.isArray(campaignsResponse) ? campaignsResponse : (campaignsResponse?.page || []);
       
       // Sync agents to Base44 entities
       for (const agent of agents) {
@@ -155,27 +208,7 @@ export default apiHandler(async (ctx, input) => {
       // Sync campaigns to Base44 entities
       for (const camp of campaigns) {
         const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: camp.ifCampaignId }).list();
-        const campData = {
-          title: camp.title,
-          status: camp.status,
-          category: camp.category,
-          goalAmount: camp.goalAmount,
-          raisedAmount: camp.raisedAmount,
-          donorCount: camp.donorCount,
-          outreachEnabled: camp.outreachEnabled,
-          paymentActive: camp.paymentActive,
-          storyPresent: camp.storyPresent,
-          coverImagePresent: camp.coverImagePresent,
-          summary: camp.summary,
-          ifCampaignId: camp.ifCampaignId,
-          lastSynced: new Date().toISOString(),
-          endDate: camp.endDate,
-          aiPriority: camp.aiPriority,
-          aiTone: camp.aiTone,
-          aiIdealDonors: camp.aiIdealDonors,
-          aiInterestedOrgs: camp.aiInterestedOrgs,
-          aiPlatforms: camp.aiPlatforms,
-        };
+        const campData = mapCampaignData(camp);
         if (existing.length > 0) {
           await ctx.entities.MonitoredCampaign.update(existing[0]._id, campData);
         } else {
@@ -183,9 +216,29 @@ export default apiHandler(async (ctx, input) => {
         }
       }
 
+      // Sync platform connections to Base44 entities in parallel
+      const platformResults = await Promise.all(platforms.map(async (platform: any) => {
+        const existing = await ctx.entities.PlatformConnection.filter({
+          campaign_id: platform.campaignId,
+          platform: platform.platform,
+        }).list();
+        const platformData = mapPlatformData(platform);
+
+        if (existing.length > 0) {
+          await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
+          return { status: "updated" };
+        }
+
+        await ctx.entities.PlatformConnection.create(platformData);
+        return { status: "created" };
+      }));
+
       return {
         agentsSynced: agents.length,
         campaignsSynced: campaigns.length,
+        platformsSynced: platforms.length,
+        platformsUpdated: platformResults.filter((r) => r.status === "updated").length,
+        platformsCreated: platformResults.filter((r) => r.status === "created").length,
         treasury: balances,
         agentStats: stats,
         timestamp: new Date().toISOString(),
@@ -193,6 +246,6 @@ export default apiHandler(async (ctx, input) => {
     }
 
     default:
-      return { error: "Unknown action. Use: sync_agents, sync_campaigns, sync_treasury, or full_sync" };
+      return { error: "Unknown action. Use: sync_agents, sync_campaigns, sync_platforms, sync_treasury, or full_sync" };
   }
 });
