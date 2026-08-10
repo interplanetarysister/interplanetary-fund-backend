@@ -205,7 +205,7 @@ export const weeklyTraining = internalMutation({
     const topPlatformInsights = platformInsights.slice(0, 3);
     const successPatterns = buildSuccessPatterns(campaigns);
     const topSuccessPatterns = successPatterns.slice(0, 2);
-    const successPatternSummary = successPatterns.slice(0, 2).join(" ");
+    const successPatternSummary = topSuccessPatterns.join(" ");
     const topPlatformSummary = topPlatformInsights.length > 0
       ? topPlatformInsights.map((p) => `${p.platform}: ${formatUsd(p.externalRaised)} from ${p.donorCount} donors`).join("; ")
       : "No connected platform totals available.";
