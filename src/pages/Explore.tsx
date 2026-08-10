@@ -12,6 +12,7 @@ const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
 const CASHAPP_TAG = "unrewound";
 const CASHAPP_URL = `https://cash.app/$${CASHAPP_TAG}`;
 const MIN_AMOUNT = 1;
+const PLATFORM_BASE_URL = "https://interplanetary-fund.vercel.app";
 
 export default function Explore() {
   // Paginated campaigns — loads 8 at a time, more on scroll
@@ -82,6 +83,7 @@ export default function Explore() {
   };
 
   const handleShare = (campaign: any) => {
+    const campaignUrl = `${PLATFORM_BASE_URL}/?campaignId=${encodeURIComponent(campaign.ifCampaignId)}`;
     recordInteraction({
       campaignId: campaign.ifCampaignId,
       campaignTitle: campaign.title,
@@ -92,10 +94,10 @@ export default function Explore() {
       navigator.share({
         title: campaign.title,
         text: `Support "${campaign.title}" on Interplanetary Fund!`,
-        url: window.location.href,
+        url: campaignUrl,
       }).catch(() => {});
     } else {
-      navigator.clipboard?.writeText(window.location.href).catch(() => {});
+      navigator.clipboard?.writeText(campaignUrl).catch(() => {});
     }
   };
 
@@ -110,6 +112,7 @@ export default function Explore() {
         donorName: donorName || "Anonymous",
         message: donationMessage || undefined,
         paymentMethod: "cashapp",
+        status: "pending",
       });
 
       const cashappPayUrl = `${CASHAPP_URL}/${numericAmount}`;
@@ -174,6 +177,11 @@ export default function Explore() {
                 <h4 className="text-sm font-semibold text-iftext">{c.title}</h4>
                 {c.summary && (
                   <p className="text-xs text-ifmuted mt-1 line-clamp-2">{c.summary}</p>
+                )}
+                {c.fundraiserEventDescription && (
+                  <p className="text-[11px] text-ifcyan mt-2 line-clamp-2">
+                    Event: {c.fundraiserEventDescription}
+                  </p>
                 )}
 
                 <div className="mt-3">
@@ -399,7 +407,7 @@ export default function Explore() {
                 <div>
                   <h3 className="text-base font-bold text-iftext">Thank you!</h3>
                   <p className="text-sm text-ifmuted mt-1">
-                    Your ${numericAmount.toLocaleString()} donation to "{selectedCampaign.title}" has been recorded.
+                    Your ${numericAmount.toLocaleString()} donation to "{selectedCampaign.title}" has been saved as pending.
                   </p>
                   <p className="text-[10px] text-ifmuted mt-2">
                     Complete your payment in CashApp if it didn't open automatically.

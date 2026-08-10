@@ -51,6 +51,11 @@ export default function Campaigns() {
                 <p className="text-[10px] text-ifmuted mt-0.5">
                   {c.category} · {c.status}
                 </p>
+                {c.fundraiserEventDescription && (
+                  <p className="text-[10px] text-ifcyan mt-1 line-clamp-2">
+                    Event: {c.fundraiserEventDescription}
+                  </p>
+                )}
               </div>
               <span className={`badge ${c.status === "active" ? "badge-green" : "badge-amber"}`}>
                 {c.status}

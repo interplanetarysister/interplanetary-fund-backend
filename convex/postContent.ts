@@ -8,6 +8,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
+const PLATFORM_BASE_URL = "https://interplanetary-fund.vercel.app";
 
 function generatePayPalLink(campaignTitle: string): string {
   const params = new URLSearchParams({
@@ -17,6 +18,10 @@ function generatePayPalLink(campaignTitle: string): string {
     currency_code: "USD",
   });
   return `https://www.paypal.com/donate/?${params.toString()}`;
+}
+
+function generateCampaignPlatformLink(campaignId: string): string {
+  return `${PLATFORM_BASE_URL}/?campaignId=${encodeURIComponent(campaignId)}`;
 }
 
 // Generate campaign post content with embedded PayPal link
@@ -29,6 +34,7 @@ export const generatePostContent = mutation({
   },
   handler: async (ctx, args) => {
     const paypalLink = generatePayPalLink(args.campaignTitle);
+    const campaignLink = generateCampaignPlatformLink(args.campaignId);
     
     // Build the post content based on platform
     let content = args.customMessage || "";
@@ -38,7 +44,7 @@ export const generatePostContent = mutation({
     }
     
     // ALWAYS append the PayPal donation block — this is mandatory
-    const donationBlock = `\n\n💝 Donate now (any amount): ${paypalLink}\nThank you for your support! 🙏`;
+    const donationBlock = `\n\n🌐 View on Interplanetary Fund: ${campaignLink}\n💝 Donate now (any amount): ${paypalLink}\nThank you for your support! 🙏`;
     
     const fullContent = content + donationBlock;
     
@@ -48,6 +54,7 @@ export const generatePostContent = mutation({
     return {
       content: fullContent,
       paypalLink,
+      campaignLink,
       linkAttachment: isFacebook ? paypalLink : undefined,
       platform: args.platform,
       campaignId: args.campaignId,
@@ -65,10 +72,20 @@ export const auditPostLinks = query({
     const missingLinks = posts.filter(
       (p) => !p.content || !p.content.includes("paypal.com/donate")
     );
+    const missingPlatformLinks = posts.filter(
+      (p) => !p.content || !p.content.includes("interplanetary-fund.vercel.app")
+    );
     return {
       totalPosts: posts.length,
       postsWithPayPalLink: posts.length - missingLinks.length,
+      postsWithPlatformLink: posts.length - missingPlatformLinks.length,
       postsMissingLinks: missingLinks.map((p) => ({
+        id: p._id,
+        campaign: p.campaignTitle || p.campaignId,
+        platform: p.platform,
+        action: "needs_regen",
+      })),
+      postsMissingPlatformLinks: missingPlatformLinks.map((p) => ({
         id: p._id,
         campaign: p.campaignTitle || p.campaignId,
         platform: p.platform,
@@ -84,14 +101,18 @@ export const fixMissingPayPalLinks = mutation({
   handler: async (ctx) => {
     const posts = await ctx.db.query("distributedPosts").collect();
     const missingLinks = posts.filter(
-      (p) => !p.content || !p.content.includes("paypal.com/donate")
+      (p) =>
+        !p.content ||
+        !p.content.includes("paypal.com/donate") ||
+        !p.content.includes("interplanetary-fund.vercel.app")
     );
     
     let fixed = 0;
     for (const post of missingLinks) {
       const campaignTitle = post.campaignTitle || "Interplanetary Fund";
       const link = generatePayPalLink(campaignTitle);
-      const donationBlock = `\n\n💝 Donate now (any amount): ${link}\nThank you! 🙏`;
+      const campaignLink = generateCampaignPlatformLink(post.campaignId);
+      const donationBlock = `\n\n🌐 View on Interplanetary Fund: ${campaignLink}\n💝 Donate now (any amount): ${link}\nThank you! 🙏`;
       
       await ctx.db.patch(post._id, {
         content: (post.content || "") + donationBlock,
@@ -127,10 +148,11 @@ export const autoGeneratePosts = internalMutation({
     
     for (const campaign of activeCampaigns) {
       const paypalLink = generatePayPalLink(campaign.title);
+      const campaignLink = generateCampaignPlatformLink(campaign.ifCampaignId);
       
       // Generate empathetic post content based on campaign summary
       const summary = campaign.summary || "Support our campaign. Every dollar makes a difference.";
-      const content = `💜 ${campaign.title}\n\n${summary}\n\nYour support means everything to us. Together, we can make a real difference. Every contribution, no matter the size, brings us one step closer to our goal.\n\n💝 Donate now (any amount): ${paypalLink}\nThank you for your support! 🙏`;
+      const content = `💜 ${campaign.title}\n\n${summary}\n\nYour support means everything to us. Together, we can make a real difference. Every contribution, no matter the size, brings us one step closer to our goal.\n\n🌐 View on Interplanetary Fund: ${campaignLink}\n💝 Donate now (any amount): ${paypalLink}\nThank you for your support! 🙏`;
       
       // Store as pending post in distributedPosts for each target platform
       const platforms = ["facebook", "bluesky", "gofundme", "patreon", "buymeacoffee", "ko-fi", "spotfund", "indiegogo", "givesendgo"];

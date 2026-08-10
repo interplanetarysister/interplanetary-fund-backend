@@ -8,6 +8,7 @@ import { query, mutation } from "./_generated/server";
 
 
 const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
+const PLATFORM_BASE_URL = "https://interplanetary-fund.vercel.app";
 
 function generatePayPalLink(campaignTitle: string): string {
   const params = new URLSearchParams({
@@ -17,6 +18,10 @@ function generatePayPalLink(campaignTitle: string): string {
     currency_code: "USD",
   });
   return `https://www.paypal.com/donate/?${params.toString()}`;
+}
+
+function generateCampaignPlatformLink(campaignId: string): string {
+  return `${PLATFORM_BASE_URL}/?campaignId=${encodeURIComponent(campaignId)}`;
 }
 
 import { v } from "convex/values";
@@ -334,7 +339,8 @@ export const generatePostTemplate = query({
     }
 
     const paypalLink = generatePayPalLink(title);
-    const templateWithDonation = template + `\n\n💝 Donate now (any amount): ${paypalLink}\nThank you for your support! 🙏`;
+    const campaignLink = generateCampaignPlatformLink(campaignId);
+    const templateWithDonation = template + `\n\n🌐 View on Interplanetary Fund: ${campaignLink}\n💝 Donate now (any amount): ${paypalLink}\nThank you for your support! 🙏`;
 
     return {
       template: templateWithDonation,
@@ -342,6 +348,7 @@ export const generatePostTemplate = query({
       postType,
       campaignTitle: title,
       paypalLink,
+      campaignLink,
       estimatedLength: templateWithDonation.length,
     };
   },

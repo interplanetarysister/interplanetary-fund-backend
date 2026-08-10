@@ -57,6 +57,7 @@ export default defineSchema({
     aiPriority: v.string(),
     storyPresent: v.boolean(),
     summary: v.string(),
+    fundraiserEventDescription: v.optional(v.string()),
     category: v.string(),
     endDate: v.string(),
     coverImagePresent: v.boolean(),
