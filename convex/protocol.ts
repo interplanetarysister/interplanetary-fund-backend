@@ -204,6 +204,7 @@ export const weeklyTraining = internalMutation({
     const platformInsights = buildPlatformInsights(connectedPlatforms);
     const topPlatformInsights = platformInsights.slice(0, 3);
     const successPatterns = buildSuccessPatterns(campaigns);
+    const topSuccessPatterns = successPatterns.slice(0, 2);
     const successPatternSummary = successPatterns.slice(0, 2).join(" ");
     const topPlatformSummary = topPlatformInsights.length > 0
       ? topPlatformInsights.map((p) => `${p.platform}: ${formatUsd(p.externalRaised)} from ${p.donorCount} donors`).join("; ")
@@ -214,6 +215,7 @@ export const weeklyTraining = internalMutation({
       "Where are donors dropping off between story engagement and completed donation, and what can we remove this week?",
       "Which platform currently has the highest externalRaised-to-donor ratio and how can we replicate it across active campaigns?",
     ];
+    const topLearningQuestions = learningQuestions.slice(0, 2);
     const trainingItinerary = [
       `Platform scan: review top performers and donation totals (${topPlatformSummary}).`,
       `Success pattern review: compare active campaigns to winning traits (${successPatternSummary}).`,
@@ -231,7 +233,7 @@ export const weeklyTraining = internalMutation({
       const baseWorkingMemory = `Latest: ${compliantCount} compliant, ${nonCompliantCount} non-compliant. Critical: ${criticalViolations.length}.`;
 
       if (agent.role === "platform_intelligence") {
-        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${successPatterns.join(" | ")}. Key questions: ${learningQuestions.join(" | ")}`;
+        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${topSuccessPatterns.join(" | ")}. Key questions: ${topLearningQuestions.join(" | ")}`;
         await ctx.db.patch(agent._id, {
           longTermMemory: [...memory.slice(-9), intelligenceUpdate],
           workingMemory: [baseWorkingMemory, ...trainingItinerary.slice(0, 2), `Question focus: ${learningQuestions[0]}`],

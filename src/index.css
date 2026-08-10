@@ -259,7 +259,8 @@ body {
 .badge-red { @apply bg-ifred/20 text-ifred; }
 .badge-amber { @apply bg-ifamber/20 text-ifamber; }
 .badge-cyan { @apply bg-ifcyan/20 text-ifcyan; }
-.badge-indigo { @apply bg-indigo-400/20 text-indigo-300; }
+.badge-purple { @apply bg-ifaccent/20 text-ifaccent; }
+.badge-indigo { @apply bg-ifaccent/20 text-ifcyan; }
 
 .btn-primary {
   @apply w-full text-ifwhite font-semibold rounded-xl py-3 px-4 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed;
