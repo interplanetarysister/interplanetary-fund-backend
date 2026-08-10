@@ -15,7 +15,7 @@ const ROLE_COLORS: Record<string, string> = {
   analytics: "badge-purple",
   treasury: "badge-amber",
   platform_sync: "badge-green",
-  platform_intelligence: "badge-platform",
+  platform_intelligence: "badge-purple",
 };
 
 export default function Agents() {
