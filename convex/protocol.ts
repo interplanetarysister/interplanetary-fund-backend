@@ -231,7 +231,7 @@ export const weeklyTraining = internalMutation({
       const baseWorkingMemory = `Latest: ${compliantCount} compliant, ${nonCompliantCount} non-compliant. Critical: ${criticalViolations.length}.`;
 
       if (agent.role === "platform_intelligence") {
-        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${successPatterns.join(" | ")} Key questions: ${learningQuestions.join(" | ")}`;
+        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${successPatterns.join(" | ")}. Key questions: ${learningQuestions.join(" | ")}`;
         await ctx.db.patch(agent._id, {
           longTermMemory: [...memory.slice(-9), intelligenceUpdate],
           workingMemory: [baseWorkingMemory, ...trainingItinerary.slice(0, 2), `Question focus: ${learningQuestions[0]}`],
