@@ -7,6 +7,11 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
+function normalizeOptionalText(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 // PRIMITIVE PROCESS CORRECTION — defaults for ALL future campaigns
 export const createCampaign = mutation({
   args: {
@@ -47,7 +52,7 @@ export const createCampaign = mutation({
         aiPlatforms: args.aiPlatforms || existing.aiPlatforms || "Facebook, Instagram, Email",
         aiPriority: args.aiPriority || existing.aiPriority || "emotional",
         storyPresent: args.storyPresent ?? existing.storyPresent ?? false,
-        fundraiserEventDescription: args.fundraiserEventDescription || existing.fundraiserEventDescription || undefined,
+        fundraiserEventDescription: normalizeOptionalText(args.fundraiserEventDescription) ?? normalizeOptionalText(existing.fundraiserEventDescription),
         endDate: args.endDate || existing.endDate || "",
         coverImagePresent: args.coverImagePresent ?? existing.coverImagePresent ?? false,
         coverImageUrl: args.coverImageUrl || existing.coverImageUrl,
@@ -63,7 +68,7 @@ export const createCampaign = mutation({
       aiTone: args.aiTone || "emotional", aiIdealDonors: args.aiIdealDonors || "",
       aiInterestedOrgs: args.aiInterestedOrgs || "", aiPlatforms: args.aiPlatforms || "Facebook, Instagram, Email",
       aiPriority: args.aiPriority || "emotional", storyPresent: args.storyPresent ?? false,
-      fundraiserEventDescription: args.fundraiserEventDescription || undefined,
+      fundraiserEventDescription: normalizeOptionalText(args.fundraiserEventDescription),
       endDate: args.endDate || "", coverImagePresent: args.coverImagePresent ?? false,
       coverImageUrl: args.coverImageUrl, lastSynced: new Date().toISOString(),
     });

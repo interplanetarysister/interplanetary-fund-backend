@@ -5,6 +5,7 @@
  */
 
 import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
 
 
 const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
@@ -23,8 +24,6 @@ function generatePayPalLink(campaignTitle: string): string {
 function generateCampaignPlatformLink(campaignId: string): string {
   return `${PLATFORM_BASE_URL}/?campaignId=${encodeURIComponent(campaignId)}`;
 }
-
-import { v } from "convex/values";
 
 // =====================================================
 // FACEBOOK OUTREACH AGENT

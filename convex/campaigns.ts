@@ -9,6 +9,11 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { validateDonation } from "./security";
 
+function normalizeOptionalText(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 export const getCampaigns = query({
   args: { 
     status: v.optional(v.string()),
@@ -113,7 +118,7 @@ export const syncCampaign = mutation({
       status: args.status || "active",
       raisedAmount: args.raisedAmount ?? 0, donorCount: args.donorCount ?? 0,
       summary: args.summary || `${args.title} — a campaign by Interplanetary Fund.`,
-      fundraiserEventDescription: args.fundraiserEventDescription || undefined,
+      fundraiserEventDescription: normalizeOptionalText(args.fundraiserEventDescription),
       category: args.category || "general",
       aiTone: args.aiTone || "emotional", aiPriority: args.aiPriority || "emotional",
       aiPlatforms: args.aiPlatforms || "Facebook, Instagram, Email",
@@ -149,7 +154,7 @@ export const bulkSyncCampaigns = mutation({
         ...c, outreachEnabled: true, paymentActive: true,
         status: c.status || "active", raisedAmount: c.raisedAmount ?? 0, donorCount: c.donorCount ?? 0,
         summary: c.summary || `${c.title} — a campaign by Interplanetary Fund.`,
-        fundraiserEventDescription: c.fundraiserEventDescription || undefined,
+        fundraiserEventDescription: normalizeOptionalText(c.fundraiserEventDescription),
         category: c.category || "general",
         aiTone: c.aiTone || "emotional", aiPriority: c.aiPriority || "emotional",
         aiPlatforms: c.aiPlatforms || "Facebook, Instagram, Email",
