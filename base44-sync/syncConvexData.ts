@@ -52,13 +52,30 @@ export default apiHandler(async (ctx, input) => {
     campaign_id: platform.campaignId,
     status: platform.status,
     automation_mode: platform.automationMode || "manual",
-    credentials: platform.credentials || "",
     external_total: platform.externalTotal ?? 0,
     external_donor_count: platform.externalDonorCount ?? 0,
     last_synced: new Date().toISOString(),
     last_error: platform.lastError || "",
     history: platform.history || [],
   });
+
+  const syncPlatformsParallel = async (platforms: any[]) => {
+    return Promise.all(platforms.map(async (platform: any) => {
+      const existing = await ctx.entities.PlatformConnection.filter({
+        campaign_id: platform.campaignId,
+        platform: platform.platform,
+      }).list();
+      const platformData = mapPlatformData(platform);
+
+      if (existing.length > 0) {
+        await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
+        return { platform: platform.platform, campaign_id: platform.campaignId, status: "updated" };
+      }
+
+      await ctx.entities.PlatformConnection.create(platformData);
+      return { platform: platform.platform, campaign_id: platform.campaignId, status: "created" };
+    }));
+  };
 
   switch (action) {
     case "sync_agents": {
@@ -123,21 +140,7 @@ export default apiHandler(async (ctx, input) => {
 
     case "sync_platforms": {
       const platforms = await convexQuery("campaigns:getExternalPlatforms", {});
-      const results = await Promise.all(platforms.map(async (platform: any) => {
-        const existing = await ctx.entities.PlatformConnection.filter({
-          campaign_id: platform.campaignId,
-          platform: platform.platform,
-        }).list();
-        const platformData = mapPlatformData(platform);
-
-        if (existing.length > 0) {
-          await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
-          return { platform: platform.platform, campaign_id: platform.campaignId, status: "updated" };
-        }
-
-        await ctx.entities.PlatformConnection.create(platformData);
-        return { platform: platform.platform, campaign_id: platform.campaignId, status: "created" };
-      }));
+      const results = await syncPlatformsParallel(platforms);
 
       return {
         synced: platforms.length,
@@ -217,21 +220,7 @@ export default apiHandler(async (ctx, input) => {
       }
 
       // Sync platform connections to Base44 entities in parallel
-      const platformResults = await Promise.all(platforms.map(async (platform: any) => {
-        const existing = await ctx.entities.PlatformConnection.filter({
-          campaign_id: platform.campaignId,
-          platform: platform.platform,
-        }).list();
-        const platformData = mapPlatformData(platform);
-
-        if (existing.length > 0) {
-          await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
-          return { status: "updated" };
-        }
-
-        await ctx.entities.PlatformConnection.create(platformData);
-        return { status: "created" };
-      }));
+      const platformResults = await syncPlatformsParallel(platforms);
 
       return {
         agentsSynced: agents.length,
