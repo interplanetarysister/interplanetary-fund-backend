@@ -105,7 +105,9 @@ export const fixMissingPayPalLinks = mutation({
         additions.push(`💝 Donate now (any amount): ${link}`);
       }
       if (additions.length === 0) continue;
-      additions.push("Thank you! 🙏");
+      if (!content.toLowerCase().includes("thank you")) {
+        additions.push("Thank you! 🙏");
+      }
       await ctx.db.patch(post._id, {
         content: `${content}\n\n${additions.join("\n")}`,
       });

@@ -30,7 +30,6 @@ export const createCheckoutSession = mutation({
       donorName: args.donorName,
       message: args.message || "",
       paymentMethod: "paypal",
-      paypalTransactionId: undefined,
       status: "pending",
       createdAt: new Date().toISOString(),
     });
