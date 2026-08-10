@@ -197,7 +197,7 @@ const REAL_CAMPAIGNS = [
     paymentActive: false,
     storyPresent: true,
     coverImagePresent: true,
-    summary: "Im seeking help to fund Ai integration for this ai based application and platform.",
+    summary: "I'm seeking help to fund Ai integration for this ai based application and platform.",
     fundraiserEventDescription: "Community launch event introducing the AI fundraising platform mission.",
     ifCampaignId: "6a6d189083f8df0b86af5491",
     endDate: "2027-01-01",

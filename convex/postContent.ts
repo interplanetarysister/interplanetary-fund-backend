@@ -73,7 +73,7 @@ export const auditPostLinks = query({
       (p) => !p.content || !p.content.includes("paypal.com/donate")
     );
     const missingPlatformLinks = posts.filter(
-      (p) => !p.content || !p.content.includes("interplanetary-fund.vercel.app")
+      (p) => !p.content || !p.content.includes(PLATFORM_BASE_URL)
     );
     return {
       totalPosts: posts.length,
@@ -104,7 +104,7 @@ export const fixMissingPayPalLinks = mutation({
       (p) =>
         !p.content ||
         !p.content.includes("paypal.com/donate") ||
-        !p.content.includes("interplanetary-fund.vercel.app")
+        !p.content.includes(PLATFORM_BASE_URL)
     );
     
     let fixed = 0;
@@ -114,7 +114,7 @@ export const fixMissingPayPalLinks = mutation({
       const campaignLink = generateCampaignPlatformLink(post.campaignId);
       const content = post.content || "";
       const additions: string[] = [];
-      if (!content.includes("interplanetary-fund.vercel.app")) {
+      if (!content.includes(PLATFORM_BASE_URL)) {
         additions.push(`🌐 View on Interplanetary Fund: ${campaignLink}`);
       }
       if (!content.includes("paypal.com/donate")) {
