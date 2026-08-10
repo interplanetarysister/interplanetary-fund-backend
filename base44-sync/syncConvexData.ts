@@ -23,58 +23,85 @@ export default apiHandler(async (ctx, input) => {
   const { action } = input || {};
 
   const mapCampaignData = (camp: any) => ({
-    if_campaign_id: camp.ifCampaignId,
+    if_campaign_id: camp.ifCampaignId || camp.if_campaign_id,
     title: camp.title,
     status: camp.status,
     category: camp.category,
-    goal_amount: camp.goalAmount,
-    raised_amount: camp.raisedAmount,
-    donor_count: camp.donorCount,
-    outreach_enabled: camp.outreachEnabled,
-    payment_active: camp.paymentActive,
-    story_present: camp.storyPresent,
-    cover_image_present: camp.coverImagePresent,
+    goal_amount: camp.goalAmount ?? camp.goal_amount,
+    raised_amount: camp.raisedAmount ?? camp.raised_amount,
+    donor_count: camp.donorCount ?? camp.donor_count,
+    outreach_enabled: camp.outreachEnabled ?? camp.outreach_enabled,
+    payment_active: camp.paymentActive ?? camp.payment_active,
+    story_present: camp.storyPresent ?? camp.story_present,
+    cover_image_present: camp.coverImagePresent ?? camp.cover_image_present,
     summary: camp.summary,
-    end_date: camp.endDate,
-    ai_priority: camp.aiPriority,
-    ai_tone: camp.aiTone,
-    ai_ideal_donors: camp.aiIdealDonors,
-    ai_interested_orgs: camp.aiInterestedOrgs,
-    ai_platforms: camp.aiPlatforms,
+    end_date: camp.endDate ?? camp.end_date,
+    ai_priority: camp.aiPriority ?? camp.ai_priority,
+    ai_tone: camp.aiTone ?? camp.ai_tone,
+    ai_ideal_donors: camp.aiIdealDonors ?? camp.ai_ideal_donors,
+    ai_interested_orgs: camp.aiInterestedOrgs ?? camp.ai_interested_orgs,
+    ai_platforms: camp.aiPlatforms ?? camp.ai_platforms,
     last_synced: new Date().toISOString(),
   });
 
   const mapPlatformData = (platform: any) => ({
     platform: platform.platform,
     kind: platform.kind,
-    display_name: platform.displayName,
-    external_url: platform.externalUrl || "",
-    campaign_id: platform.campaignId,
+    display_name: platform.displayName || platform.display_name,
+    external_url: platform.externalUrl || platform.external_url || "",
+    campaign_id: platform.campaignId || platform.campaign_id,
     status: platform.status,
-    automation_mode: platform.automationMode || "manual",
-    external_total: platform.externalTotal ?? 0,
-    external_donor_count: platform.externalDonorCount ?? 0,
+    automation_mode: platform.automationMode || platform.automation_mode || "manual",
+    external_total: platform.externalTotal ?? platform.external_total ?? 0,
+    external_donor_count: platform.externalDonorCount ?? platform.external_donor_count ?? 0,
     last_synced: new Date().toISOString(),
-    last_error: platform.lastError || "",
+    last_error: platform.lastError || platform.last_error || "",
     history: platform.history || [],
   });
 
+  const normalizeList = (value: any) => (
+    Array.isArray(value) ? value : (value?.page || [])
+  );
+
+  const getCampaignIfId = (camp: any) => camp.ifCampaignId || camp.if_campaign_id;
+  const getPlatformCampaignId = (platform: any) => platform.campaignId || platform.campaign_id;
+  const getPlatformName = (platform: any) => platform.platform;
+  const summarizePlatformResults = (results: Array<{ status: string }>) => (
+    results.reduce((acc, result) => {
+      if (result.status === "updated") acc.updated += 1;
+      if (result.status === "created") acc.created += 1;
+      return acc;
+    }, { updated: 0, created: 0 })
+  );
+
   const syncPlatformsParallel = async (platforms: any[]) => {
-    return Promise.all(platforms.map(async (platform: any) => {
-      const existing = await ctx.entities.PlatformConnection.filter({
-        campaign_id: platform.campaignId,
-        platform: platform.platform,
-      }).list();
-      const platformData = mapPlatformData(platform);
+    const results: Array<{ platform: string; campaign_id: string; status: string }> = [];
+    const batchSize = 10;
+    const dedupedPlatforms = Array.from(
+      new Map(platforms.map((platform: any) => [`${getPlatformCampaignId(platform)}::${getPlatformName(platform)}`, platform])).values()
+    );
 
-      if (existing.length > 0) {
-        await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
-        return { platform: platform.platform, campaign_id: platform.campaignId, status: "updated" };
-      }
+    for (let i = 0; i < dedupedPlatforms.length; i += batchSize) {
+      const batch = dedupedPlatforms.slice(i, i + batchSize);
+      const batchResults = await Promise.all(batch.map(async (platform: any) => {
+        const existing = await ctx.entities.PlatformConnection.filter({
+          campaign_id: getPlatformCampaignId(platform),
+          platform: getPlatformName(platform),
+        }).list();
+        const platformData = mapPlatformData(platform);
 
-      await ctx.entities.PlatformConnection.create(platformData);
-      return { platform: platform.platform, campaign_id: platform.campaignId, status: "created" };
-    }));
+        if (existing.length > 0) {
+          await ctx.entities.PlatformConnection.update(existing[0]._id, platformData);
+          return { platform: getPlatformName(platform), campaign_id: getPlatformCampaignId(platform), status: "updated" };
+        }
+
+        await ctx.entities.PlatformConnection.create(platformData);
+        return { platform: getPlatformName(platform), campaign_id: getPlatformCampaignId(platform), status: "created" };
+      }));
+      results.push(...batchResults);
+    }
+
+    return results;
   };
 
   switch (action) {
@@ -125,9 +152,9 @@ export default apiHandler(async (ctx, input) => {
       const campaignsResponse = await convexQuery("campaigns:getCampaigns", {
         paginationOpts: { numItems: 500, cursor: null },
       });
-      const campaigns = Array.isArray(campaignsResponse) ? campaignsResponse : (campaignsResponse?.page || []);
+      const campaigns = normalizeList(campaignsResponse);
       for (const camp of campaigns) {
-        const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: camp.ifCampaignId }).list();
+        const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: getCampaignIfId(camp) }).list();
         const campData = mapCampaignData(camp);
         if (existing.length > 0) {
           await ctx.entities.MonitoredCampaign.update(existing[0]._id, campData);
@@ -139,13 +166,15 @@ export default apiHandler(async (ctx, input) => {
     }
 
     case "sync_platforms": {
-      const platforms = await convexQuery("campaigns:getExternalPlatforms", {});
+      const platformsResponse = await convexQuery("campaigns:getExternalPlatforms", {});
+      const platforms = normalizeList(platformsResponse);
       const results = await syncPlatformsParallel(platforms);
+      const platformSummary = summarizePlatformResults(results);
 
       return {
         synced: platforms.length,
-        updated: results.filter((r) => r.status === "updated").length,
-        created: results.filter((r) => r.status === "created").length,
+        updated: platformSummary.updated,
+        created: platformSummary.created,
         platforms: results,
       };
     }
@@ -166,7 +195,8 @@ export default apiHandler(async (ctx, input) => {
         convexQuery("treasury:aggregateBalances", {}),
         convexQuery("agents:getAgentStats", {}),
       ]);
-      const campaigns = Array.isArray(campaignsResponse) ? campaignsResponse : (campaignsResponse?.page || []);
+      const campaigns = normalizeList(campaignsResponse);
+      const normalizedPlatforms = normalizeList(platforms);
       
       // Sync agents to Base44 entities
       for (const agent of agents) {
@@ -210,7 +240,7 @@ export default apiHandler(async (ctx, input) => {
 
       // Sync campaigns to Base44 entities
       for (const camp of campaigns) {
-        const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: camp.ifCampaignId }).list();
+        const existing = await ctx.entities.MonitoredCampaign.filter({ if_campaign_id: getCampaignIfId(camp) }).list();
         const campData = mapCampaignData(camp);
         if (existing.length > 0) {
           await ctx.entities.MonitoredCampaign.update(existing[0]._id, campData);
@@ -220,14 +250,15 @@ export default apiHandler(async (ctx, input) => {
       }
 
       // Sync platform connections to Base44 entities in parallel
-      const platformResults = await syncPlatformsParallel(platforms);
+      const platformResults = await syncPlatformsParallel(normalizedPlatforms);
+      const platformSummary = summarizePlatformResults(platformResults);
 
       return {
         agentsSynced: agents.length,
         campaignsSynced: campaigns.length,
-        platformsSynced: platforms.length,
-        platformsUpdated: platformResults.filter((r) => r.status === "updated").length,
-        platformsCreated: platformResults.filter((r) => r.status === "created").length,
+        platformsSynced: normalizedPlatforms.length,
+        platformsUpdated: platformSummary.updated,
+        platformsCreated: platformSummary.created,
         treasury: balances,
         agentStats: stats,
         timestamp: new Date().toISOString(),
