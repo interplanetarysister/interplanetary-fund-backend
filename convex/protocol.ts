@@ -204,6 +204,7 @@ export const weeklyTraining = internalMutation({
     const platformInsights = buildPlatformInsights(connectedPlatforms);
     const topPlatformInsights = platformInsights.slice(0, 3);
     const successPatterns = buildSuccessPatterns(campaigns);
+    const successPatternSummary = successPatterns.slice(0, 2).join(" ");
     const topPlatformSummary = topPlatformInsights.length > 0
       ? topPlatformInsights.map((p) => `${p.platform}: ${formatUsd(p.externalRaised)} from ${p.donorCount} donors`).join("; ")
       : "No connected platform totals available.";
@@ -215,7 +216,7 @@ export const weeklyTraining = internalMutation({
     ];
     const trainingItinerary = [
       `Platform scan: review top performers and donation totals (${topPlatformSummary}).`,
-      `Success pattern review: compare active campaigns to winning traits (${successPatterns[0]} ${successPatterns[1]}).`,
+      `Success pattern review: compare active campaigns to winning traits (${successPatternSummary}).`,
       "Experiment planning: define one conversion test per active campaign focused on story clarity, donor targeting, or payment flow.",
       "Cross-agent alignment: share recommendations with strategy, growth, and communications agents and assign owners.",
       "Memory update: record outcomes, open questions, and next-week hypotheses in long-term memory.",
@@ -230,7 +231,7 @@ export const weeklyTraining = internalMutation({
       const baseWorkingMemory = `Latest: ${compliantCount} compliant, ${nonCompliantCount} non-compliant. Critical: ${criticalViolations.length}.`;
 
       if (agent.role === "platform_intelligence") {
-        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${successPatterns.join(" ")} Key questions: ${learningQuestions.join(" ")}`;
+        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${successPatterns.join(" | ")} Key questions: ${learningQuestions.join(" | ")}`;
         await ctx.db.patch(agent._id, {
           longTermMemory: [...memory.slice(-9), intelligenceUpdate],
           workingMemory: [baseWorkingMemory, ...trainingItinerary.slice(0, 2), `Question focus: ${learningQuestions[0]}`],
