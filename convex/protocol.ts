@@ -14,7 +14,15 @@ import { v } from "convex/values";
 const formatUsd = (value: number) => `$${value.toFixed(2)}`;
 
 type TrainingCampaign = {
+  ifCampaignId: string;
+  title: string;
+  status: string;
+  category: string;
+  summary: string;
+  outreachEnabled: boolean;
+  paymentActive: boolean;
   storyPresent: boolean;
+  coverImagePresent: boolean;
   aiIdealDonors: string;
   aiPlatforms: string;
   aiTone: string;
@@ -22,13 +30,14 @@ type TrainingCampaign = {
   endDate: string;
   goalAmount: number;
   externalRaised?: number;
+  donorCount: number;
   raisedAmount: number;
 };
 
 type ExternalPlatformConnection = {
   platform: string;
-  externalTotal: number;
-  externalDonorCount: number;
+  externalTotal?: number;
+  externalDonorCount?: number;
 };
 
 const buildPlatformInsights = (platforms: ExternalPlatformConnection[]) => {
