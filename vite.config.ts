@@ -20,8 +20,8 @@ export default defineConfig({
     target: "es2020",
     // CSS code splitting
     cssCodeSplit: true,
-    // Smaller chunks for faster initial load on mobile
-    chunkSizeWarningLimit: 100,
+    // The globe route is intentionally lazy-loaded and ships a large visualization chunk.
+    chunkSizeWarningLimit: 1500,
     esbuildOptions: {
       drop: ["console", "debugger"],
       minify: true,
