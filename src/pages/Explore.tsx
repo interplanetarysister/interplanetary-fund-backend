@@ -5,16 +5,18 @@
  */
 
 import { useEffect, useState } from "react";
-import { usePaginatedQuery, useQuery, useMutation } from "convex/react";
+import { useConvexConnectionState, usePaginatedQuery, useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import QRCode from "qrcode";
 
 const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
 const MIN_AMOUNT = 1;
+const STARTUP_TIMEOUT_MS = 12000;
 
 type PaymentMethod = "cashapp" | "paypal" | "bitcoin";
 
 export default function Explore() {
+  const connectionState = useConvexConnectionState();
   // Paginated campaigns — loads 8 at a time, more on scroll
   const { results: campaigns, status: campaignStatus, loadMore } = usePaginatedQuery(
     api.campaigns.getCampaigns,
@@ -39,9 +41,11 @@ export default function Explore() {
   const [intentResult, setIntentResult] = useState<any | null>(null);
   const [bitcoinQr, setBitcoinQr] = useState("");
   const [verificationResult, setVerificationResult] = useState<any | null>(null);
+  const [startupTimedOut, setStartupTimedOut] = useState(false);
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
+  const isInitialLoading = campaignStatus === "LoadingFirstPage" || stats === undefined || balances === undefined;
 
   useEffect(() => {
     if (!paymentMethods) return;
@@ -75,7 +79,22 @@ export default function Explore() {
     };
   }, [intentResult?.bitcoin?.paymentUri]);
 
-  if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {
+  useEffect(() => {
+    if (!isInitialLoading) {
+      setStartupTimedOut(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setStartupTimedOut(true);
+    }, STARTUP_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [isInitialLoading]);
+
+  if (isInitialLoading && !startupTimedOut) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="w-8 h-8 border-2 border-ifaccent border-t-transparent rounded-full animate-spin" />
@@ -83,10 +102,39 @@ export default function Explore() {
     );
   }
 
+  if (isInitialLoading) {
+    const retryLabel = connectionState.connectionRetries > 0
+      ? `Retrying live connection (${connectionState.connectionRetries})`
+      : "Waiting for live connection";
+
+    return (
+      <div className="card text-center py-8 space-y-3">
+        <div className="text-3xl">⚠️</div>
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-iftext">Live data is taking too long to load</h3>
+          <p className="text-xs text-ifmuted">
+            Interplanetary Fund could not finish connecting to the live Convex service.
+          </p>
+          <p className="text-[11px] text-ifmuted">
+            {retryLabel}
+            {!connectionState.hasEverConnected && !connectionState.isWebSocketConnected ? " — check your network, then try again." : "."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="btn-primary"
+        >
+          Retry loading
+        </button>
+      </div>
+    );
+  }
+
   // Stats come from lightweight query, not from loading all campaigns
-  const totalRaised = balances.grandTotal?.raised || 0;
-  const totalDonors = balances.grandTotal?.donors || 0;
-  const activeCount = stats.activeCount || 0;
+  const totalRaised = balances?.grandTotal?.raised || 0;
+  const totalDonors = balances?.grandTotal?.donors || 0;
+  const activeCount = stats?.activeCount || 0;
 
   const numericAmount = parseFloat(donationAmount) || 0;
   const isValidAmount = numericAmount >= MIN_AMOUNT;
