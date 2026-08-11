@@ -20,7 +20,7 @@ export const recordMigration = mutation({
   },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
+    if (!validateDonation(args.grossAmount)) {
       throw new Error("Invalid amount for fund migration.");
     }
     // Calculate fees
@@ -99,10 +99,9 @@ export const getPendingPayouts = query({
   args: { campaignId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
-    let payouts = await ctx.db.query("payoutRequests").collect();
+    let payouts = await ctx.db.query("payoutRequests")
+      .withIndex("byStatus", (q) => q.eq("status", "pending_user_selection"))
+      .collect();
     
     if (args.campaignId) {
       payouts = payouts.filter((p) => p.userId === args.campaignId);
@@ -124,15 +123,12 @@ export const getPendingPayouts = query({
 // User selects payout method for their migrated funds
 export const selectPayoutMethod = mutation({
   args: {
-    payoutId: v.string(),
+    payoutId: v.id("payoutRequests"),
     payoutMethod: v.string(),
     payoutDestination: v.string(),
   },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     const payout = await ctx.db.get(args.payoutId);
     if (!payout) {
       throw new Error("Payout not found");
@@ -156,9 +152,6 @@ export const getMigrationHistory = query({
   args: { campaignId: v.string() },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     const donations = await ctx.db
       .query("donations")
       .withIndex("byCampaignId", (q) => q.eq("campaignId", args.campaignId))
@@ -190,9 +183,6 @@ export const batchMigrate = mutation({
   },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     const results = [];
     let totalGross = 0;
     let totalFees = 0;
@@ -309,11 +299,19 @@ export const checkBalancesAndQueueMigrations = internalMutation({
   handler: async (ctx) => {
     const platforms = await ctx.db.query("externalPlatforms").collect();
     const campaigns = await ctx.db.query("monitoredCampaigns").collect();
+    const campaignsByIfId = new Map(
+      campaigns.map((campaign) => [campaign.ifCampaignId, campaign])
+    );
     // Load only queued transactions to power the idempotency check
     const queuedTransactions = await ctx.db
       .query("transactions")
       .withIndex("byType", (q) => q.eq("type", "fund_migration_detected"))
       .collect();
+    const queuedTransactionKeys = new Set(
+      queuedTransactions
+        .filter((transaction) => transaction.status === "queued")
+        .map((transaction) => `${transaction.campaignId || ""}::${(transaction.sourcePlatform || "").toLowerCase()}`)
+    );
 
     const candidatePlatforms = platforms.filter(
       (p) => (p.externalTotal || 0) > MIN_BALANCE_TO_QUEUE
@@ -344,12 +342,8 @@ export const checkBalancesAndQueueMigrations = internalMutation({
         }
 
         // Condition (d): no existing queued transaction for this campaign+platform
-        const alreadyQueued = queuedTransactions.some(
-          (t) =>
-            t.status === "queued" &&
-            t.campaignId === platform.campaignId &&
-            (t.sourcePlatform || "").toLowerCase() === (platform.platform || "").toLowerCase()
-        );
+        const queueKey = `${platform.campaignId}::${(platform.platform || "").toLowerCase()}`;
+        const alreadyQueued = queuedTransactionKeys.has(queueKey);
         if (alreadyQueued) {
           skipped.push({
             campaignId: platform.campaignId,
@@ -360,7 +354,7 @@ export const checkBalancesAndQueueMigrations = internalMutation({
         }
 
         // Condition (b): associated campaign must exist and be active
-        const campaign = campaigns.find((c) => c.ifCampaignId === platform.campaignId);
+        const campaign = campaignsByIfId.get(platform.campaignId);
         if (!campaign) {
           skipped.push({
             campaignId: platform.campaignId,
@@ -403,6 +397,7 @@ export const checkBalancesAndQueueMigrations = internalMutation({
           status: "queued",
           createdAt: now,
         });
+        queuedTransactionKeys.add(queueKey);
 
         // Create a payout request in pending_user_selection — human action required
         const payoutId = await ctx.db.insert("payoutRequests", {

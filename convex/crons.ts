@@ -89,6 +89,15 @@ crons.daily(
   {}
 );
 
+// Daily campaign completion — 7:30am Pacific (14:30 UTC)
+// Automatically completes active campaigns whose endDate has passed
+crons.daily(
+  "daily-campaign-completion",
+  { hourUTC: 14, minuteUTC: 30 },
+  internal.fixCampaignStatus.autoCompleteExpiredCampaigns,
+  {}
+);
+
 // Daily external platform balance check + migration queue — 9am Pacific (16:00 UTC)
 // Scans externalPlatforms for positive balances and queues fund migrations
 crons.daily(

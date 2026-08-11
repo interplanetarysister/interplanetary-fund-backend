@@ -438,15 +438,26 @@ export const autoGeneratePosts = internalMutation({
     const results = [];
     const connectedPlatforms = await ctx.db.query("externalPlatforms").collect();
     const knownAccounts = await ctx.db.query("accountsCreated").collect();
+    const platformsByCampaign = new Map<string, typeof connectedPlatforms>();
+    for (const platform of connectedPlatforms) {
+      const existingPlatforms = platformsByCampaign.get(platform.campaignId) || [];
+      existingPlatforms.push(platform);
+      platformsByCampaign.set(platform.campaignId, existingPlatforms);
+    }
     const knownOrganizerKeys = new Set(
       knownAccounts.map((a) => `${normalizePlatform(String(a.platform || ""))}::${String(a.accountEmail || "").toLowerCase()}`)
     );
     const organizerPlatforms = ["gofundme", "kickstarter", "indiegogo", "givesendgo", "fundrazr"];
 
     for (const campaign of activeCampaigns) {
+      const existingConnections = platformsByCampaign.get(campaign.ifCampaignId) || [];
+      const existingPosts = await ctx.db.query("distributedPosts")
+        .withIndex("byCampaignId", (q) => q.eq("campaignId", campaign.ifCampaignId))
+        .collect();
+      const today = new Date().toISOString().split("T")[0];
+
       // Determine target platforms from existing connections or fall back to full set
-      const platforms = connectedPlatforms
-        .filter((p) => p.campaignId === campaign.ifCampaignId)
+      const platforms = existingConnections
         .map((p) => String(p.platform || ""))
         .filter((p) => p.length > 0);
       const targetPlatforms: string[] = platforms.length > 0
@@ -462,12 +473,7 @@ export const autoGeneratePosts = internalMutation({
         });
 
         // Check if we already have a pending post for this campaign+platform today
-        const existing = await ctx.db.query("distributedPosts")
-          .withIndex("byCampaignId", (q) => q.eq("campaignId", campaign.ifCampaignId))
-          .collect();
-
-        const today = new Date().toISOString().split("T")[0];
-        const alreadyPostedToday = existing.some(p =>
+        const alreadyPostedToday = existingPosts.some(p =>
           p.platform === platform &&
           p.createdAt?.startsWith(today) &&
           (p.status === "pending" || p.status === "posted")
@@ -496,7 +502,7 @@ export const autoGeneratePosts = internalMutation({
         }
 
         // Create or update externalPlatforms row with listing lifecycle state
-        const existingConnection = connectedPlatforms.find(
+        const existingConnection = existingConnections.find(
           (p) => p.campaignId === campaign.ifCampaignId && normalizePlatform(p.platform) === listing.normalizedPlatform
         );
         if (existingConnection) {
@@ -604,9 +610,10 @@ export const getPublishablePosts = query({
 export const getManualPendingPosts = query({
   args: {},
   handler: async (ctx) => {
-    const posts = await ctx.db.query("distributedPosts").collect();
+    const posts = await ctx.db.query("distributedPosts")
+      .withIndex("byStatus", (q) => q.eq("status", "manual_pending"))
+      .collect();
     return posts
-      .filter((p) => p.status === "manual_pending")
       .map((p) => ({
         id: p._id,
         campaignTitle: p.campaignTitle,

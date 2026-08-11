@@ -21,10 +21,12 @@ export const cleanupPlaceholderUrls = mutation({
         await ctx.db.patch(platform._id, {
           externalUrl: "",
           status: "draft",
+          lastError: "Placeholder URL cleaned manually",
+          lastSynced: new Date().toISOString(),
         });
         cleaned.push({
           id: platform._id,
-          platform: platform.platformName,
+          platform: platform.platform,
           oldUrl: platform.externalUrl,
           status: "draft",
         });
@@ -50,9 +52,11 @@ export const fixPlatformStatuses = mutation({
       if (!platform.externalUrl || platform.externalUrl.length < 10) {
         await ctx.db.patch(platform._id, {
           status: "draft",
+          lastError: "Invalid URL marked draft manually",
+          lastSynced: new Date().toISOString(),
         });
         fixed.push({
-          platform: platform.platformName,
+          platform: platform.platform,
           campaign: platform.campaignId,
           reason: "Invalid URL",
         });

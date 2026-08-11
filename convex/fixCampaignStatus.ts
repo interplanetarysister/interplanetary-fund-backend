@@ -4,7 +4,7 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
 // Fix campaigns: activate drafts, set payment_active, add summaries
@@ -51,6 +51,38 @@ export const fixAllCampaigns = mutation({
       status: "success",
       campaignsFixed: fixed.length,
       details: fixed,
+    };
+  },
+});
+
+export const autoCompleteExpiredCampaigns = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const activeCampaigns = await ctx.db.query("monitoredCampaigns")
+      .withIndex("byStatus", (q) => q.eq("status", "active"))
+      .collect();
+    const now = Date.now();
+    const completed = [];
+
+    for (const campaign of activeCampaigns) {
+      const endDate = campaign.endDate ? Date.parse(campaign.endDate) : NaN;
+      if (!Number.isNaN(endDate) && endDate < now) {
+        await ctx.db.patch(campaign._id, {
+          status: "completed",
+          lastSynced: new Date().toISOString(),
+        });
+        completed.push({
+          campaign: campaign.title,
+          endDate: campaign.endDate,
+        });
+      }
+    }
+
+    return {
+      status: "success",
+      campaignsChecked: activeCampaigns.length,
+      campaignsCompleted: completed.length,
+      details: completed,
     };
   },
 });
