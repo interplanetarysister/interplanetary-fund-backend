@@ -155,13 +155,7 @@ export default defineSchema({
     payoutRequestId: v.optional(v.string()),
     status: v.string(),
     createdAt: v.string(),
-    paymentMethod: v.optional(v.string()),
-    paymentProvider: v.optional(v.string()),
-    currency: v.optional(v.string()),
-    providerTransactionId: v.optional(v.string()),
-    donationId: v.optional(v.string()),
-    paymentReference: v.optional(v.string()),
-  }).index("byUserId", ["userId"]).index("byType", ["type"]).index("byProviderTransactionId", ["providerTransactionId"]),
+  }).index("byUserId", ["userId"]).index("byType", ["type"]),
 
   // DONATIONS
   donations: defineTable({
@@ -173,53 +167,7 @@ export default defineSchema({
     paymentMethod: v.string(),
     status: v.string(),
     createdAt: v.string(),
-    provider: v.optional(v.string()),
-    currency: v.optional(v.string()),
-    paymentReference: v.optional(v.string()),
-    providerTransactionId: v.optional(v.string()),
-    idempotencyKey: v.optional(v.string()),
-    expiresAt: v.optional(v.string()),
-    confirmedAt: v.optional(v.string()),
-    updatedAt: v.optional(v.string()),
-    checkout: v.optional(v.object({
-      url: v.string(),
-    })),
-    bitcoinTxHash: v.optional(v.string()),
-    bitcoin: v.optional(v.object({
-      status: v.string(),
-      address: v.string(),
-      btcAmount: v.number(),
-      usdAmount: v.number(),
-      exchangeRate: v.number(),
-      exchangeRateSource: v.string(),
-      exchangeRateTimestamp: v.string(),
-      requiredConfirmations: v.number(),
-      confirmations: v.number(),
-      expiresAt: v.string(),
-      paymentUri: v.string(),
-      verificationAttempts: v.number(),
-      nextVerificationAt: v.string(),
-      lastVerificationAt: v.optional(v.string()),
-      txHash: v.optional(v.string()),
-      detectedBtcAmount: v.optional(v.number()),
-      failureReason: v.optional(v.string()),
-    })),
-  })
-    .index("byCampaignId", ["campaignId"])
-    .index("byStatus", ["status"])
-    .index("byPaymentReference", ["paymentReference"])
-    .index("byProviderTransactionId", ["providerTransactionId"])
-    .index("byBitcoinTxHash", ["bitcoinTxHash"])
-    .index("byIdempotencyKey", ["idempotencyKey"]),
-
-  // EXCHANGE RATE CACHE
-  exchangeRateCache: defineTable({
-    pair: v.string(),
-    rate: v.number(),
-    source: v.string(),
-    fetchedAt: v.string(),
-    expiresAt: v.string(),
-  }).index("byPair", ["pair"]),
+  }).index("byCampaignId", ["campaignId"]).index("byStatus", ["status"]),
 
   // SUPPORTER INTERACTIONS
   supporterInteractions: defineTable({

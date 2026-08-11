@@ -30,11 +30,8 @@ export const createCheckoutSession = mutation({
       donorName: args.donorName,
       message: args.message || "",
       paymentMethod: "paypal",
-      provider: "paypal",
-      currency: "USD",
       status: "pending",
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
     });
 
     // PayPal Donate URL (simplest integration - no SDK needed)
@@ -63,24 +60,17 @@ export const confirmDonation = mutation({
   },
   handler: async (ctx, args) => {
     checkRateLimit("checkout", 10, 60000); // Max 10 per minute
+    if (!validateDonation(args.amount || 0)) {
+      throw new Error("Invalid donation amount.");
+    }
     const donation = await ctx.db.get(args.donationId);
     if (!donation) {
       throw new Error("Donation not found");
     }
-    if (donation.providerTransactionId && donation.providerTransactionId === args.paypalTransactionId) {
-      return { status: "success", summary: { donation: donation.amount } };
-    }
-    if (donation.status === "confirmed" || donation.status === "completed") {
-      return { status: "success", summary: { donation: donation.amount } };
-    }
 
     // Mark donation as completed
     await ctx.db.patch(args.donationId, {
-      status: "confirmed",
-      providerTransactionId: args.paypalTransactionId,
-      provider: "paypal",
-      updatedAt: new Date().toISOString(),
-      confirmedAt: new Date().toISOString(),
+      status: "completed",
     });
 
     // Update campaign raised amount
@@ -106,14 +96,8 @@ export const confirmDonation = mutation({
       userId: donation.campaignId,
       type: "donation_received",
       amount: donation.amount,
-      status: "confirmed",
+      status: "completed",
       createdAt: new Date().toISOString(),
-      paymentMethod: "paypal",
-      paymentProvider: "paypal",
-      currency: "USD",
-      providerTransactionId: args.paypalTransactionId,
-      donationId: donation._id,
-      paymentReference: donation.paymentReference,
     });
 
     return {
@@ -133,6 +117,9 @@ export const getDonations = query({
   args: { campaignId: v.string() },
   handler: async (ctx, args) => {
     checkRateLimit("checkout", 10, 60000); // Max 10 per minute
+    if (!validateDonation(args.amount || 0)) {
+      throw new Error("Invalid donation amount.");
+    }
     return await ctx.db
       .query("donations")
       .withIndex("byCampaignId", (q) => q.eq("campaignId", args.campaignId))

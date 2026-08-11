@@ -56,8 +56,6 @@ See [MOBILE_BUILD.md](./MOBILE_BUILD.md) for full mobile build instructions.
 ```bash
 # .env.local (development)
 VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
-VITE_PAYPAL_BUSINESS_EMAIL=<optional>
-VITE_CASHAPP_CASHTAG=<optional>
 
 # Vercel (production) — set in dashboard or CLI
 VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
@@ -65,35 +63,7 @@ VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
 # GitHub Actions (CI/CD) — set as repository secrets
 VITE_CONVEX_URL=<your-convex-url>
 CONVEX_DEPLOY_KEY=<your-convex-deploy-key>
-
-# Convex payment router env (set with `npx convex env set`)
-PAYPAL_BUSINESS_EMAIL=<paypal business email>
-CASHAPP_CASHTAG=<cash app cashtag without $>
-BITCOIN_DONATION_ADDRESS=<public btc receive address>
-BITCOIN_REQUIRED_CONFIRMATIONS=3
-BITCOIN_PAYMENT_EXPIRY_MINUTES=45
-BITCOIN_VERIFY_MAX_RETRIES=8
-BITCOIN_VERIFY_BASE_BACKOFF_SECONDS=30
-BTC_RATE_CACHE_TTL_SECONDS=300
-BLOCKCHAIN_API_BASE_URL=https://blockstream.info/api
 ```
-
-## Unified Donation Payment Router
-
-- `convex/paymentRouter.ts` provides the unified donation intent and verification flow.
-- Implemented providers:
-  - **PayPal** (external checkout link, unified pending/confirmed ledger states)
-  - **Cash App** (external link/Cashtag flow, not auto-confirmed)
-  - **Bitcoin** (intent + address/URI + required-confirmation verification)
-- Not implemented in this repository:
-  - **Stripe** direct integration
-  - **PayPal webhook/IPN credentials setup**
-- Bitcoin verification is deterministic and server-side:
-  - destination-address check
-  - amount check
-  - confirmation count check
-  - duplicate tx-hash protection
-  - bounded retries with exponential backoff
 
 ## Convex Backend
 
