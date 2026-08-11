@@ -1,6 +1,7 @@
 {
   "name": "interplanetary-fund",
   "version": "1.0.0",
+  "type": "module",
   "description": "Interplanetary Fund — full-stack app with agents, protocol enforcement, treasury management, and external platform sync. Frontend: React + Vite. Backend: Convex. Credit-free.",
   "scripts": {
     "dev": "vite",
@@ -23,6 +24,7 @@
     "@capacitor/splash-screen": "^6.0.0",
     "convex": "^1.43.0",
     "globe.gl": "^2.46.1",
+    "qrcode": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.185.1"

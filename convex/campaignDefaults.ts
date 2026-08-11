@@ -81,6 +81,7 @@ export const enforceAllCampaignDefaults = mutation({
       if (campaign.donorCount === undefined || campaign.donorCount === null) updates.donorCount = 0;
       if (campaign.raisedAmount === undefined || campaign.raisedAmount === null) updates.raisedAmount = 0;
       if (!campaign.summary || campaign.summary.trim() === "") updates.summary = `${campaign.title} — a campaign by Interplanetary Fund.`;
+      if (!campaign.cashappTag) updates.cashappTag = "$unrewound";
       updates.lastSynced = new Date().toISOString();
       if (Object.keys(updates).length > 0) {
         await ctx.db.patch(campaign._id, updates);

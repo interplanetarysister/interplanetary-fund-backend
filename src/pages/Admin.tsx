@@ -10,6 +10,7 @@ import type { AdminUser } from "../types";
 import PermissionsManager from "../components/PermissionsManager";
 import FraudControl from "../components/FraudControl";
 import UserManagement from "../components/UserManagement";
+import { FundMigrationDashboard } from "../components/FundMigrationDashboard";
 import { api } from "../../convex/_generated/api";
 
 type AdminTab =
@@ -17,6 +18,7 @@ type AdminTab =
   | "campaigns"
   | "agents"
   | "treasury"
+  | "migration"
   | "platforms"
   | "reports"
   | "interactions"
@@ -28,6 +30,7 @@ const TAB_PERMISSIONS: Record<AdminTab, string> = {
   campaigns: "campaigns",
   agents: "all",       // agent management is super-admin only
   treasury: "finance",
+  migration: "finance",
   platforms: "platforms",
   reports: "reports",
   interactions: "reports",
@@ -41,6 +44,7 @@ const ALL_TABS: { id: AdminTab; label: string }[] = [
   { id: "campaigns", label: "Campaigns" },
   { id: "agents", label: "Agents" },
   { id: "treasury", label: "Treasury" },
+  { id: "migration", label: "Migrate Funds" },
   { id: "platforms", label: "Platforms" },
   { id: "reports", label: "Reports" },
   { id: "interactions", label: "Activity" },
@@ -98,11 +102,19 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
   const [campaignUrl, setCampaignUrl] = useState("");
   const [campaignTitle, setCampaignTitle] = useState("");
   const [connectionType, setConnectionType] = useState("manual");
+  const [fixCampaignsResult, setFixCampaignsResult] = useState<string | null>(null);
+  const [fixUrlsResult, setFixUrlsResult] = useState<string | null>(null);
+  const [postUrlInputs, setPostUrlInputs] = useState<Record<string, string>>({});
 
   // Mutations
   const requestPayout = useMutation(api.treasury.requestPayout);
   const createDeposit = useMutation(api.treasury.createDeposit);
   const connectPlatform = useMutation(api.campaigns.connectExternalPlatform);
+  const fixAllCampaigns = useMutation(api.fixCampaignStatus.fixAllCampaigns);
+  const reclassifyManualPosts = useMutation(api.fixPublishing.reclassifyManualPosts);
+  const fixPostUrls = useMutation(api.postContent.fixDistributedPostUrls);
+  const markPostPublished = useMutation(api.postContent.markPostPublished);
+  const manualPendingPosts = useQuery(api.postContent.getManualPendingPosts, {});
   const feeCalc = useQuery(api.treasury.calculatePayout, {
     amount: parseFloat(payoutAmount) || 0,
   });
@@ -356,6 +368,111 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
               </div>
             );
           })}
+
+          {/* Fix All Campaigns — issue #4 */}
+          <div className="card space-y-3">
+            <h3 className="text-sm font-semibold text-iftext">Campaign Defaults</h3>
+            <p className="text-xs text-ifmuted">
+              Activate draft campaigns, set payment_active, outreach_enabled, and generate missing summaries.
+            </p>
+            {fixCampaignsResult && (
+              <p className="text-xs text-ifgreen bg-ifgreen/10 rounded-lg px-3 py-2">{fixCampaignsResult}</p>
+            )}
+            <button
+              onClick={async () => {
+                try {
+                  const r: any = await fixAllCampaigns({});
+                  setFixCampaignsResult(`Fixed ${r.campaignsFixed} campaign(s). ${r.details?.map((d: any) => d.campaign).join(", ")}`);
+                } catch (e: any) {
+                  setFixCampaignsResult(`Error: ${e.message}`);
+                }
+              }}
+              className="btn-primary w-full"
+            >
+              Fix All Campaigns
+            </button>
+          </div>
+
+          {/* Fix Post URLs — issue #9 */}
+          <div className="card space-y-3">
+            <h3 className="text-sm font-semibold text-iftext">Fix Post Links</h3>
+            <p className="text-xs text-ifmuted">
+              Replace legacy base44 URLs in all distributed posts with the IF app campaign URLs.
+            </p>
+            {fixUrlsResult && (
+              <p className="text-xs text-ifgreen bg-ifgreen/10 rounded-lg px-3 py-2">{fixUrlsResult}</p>
+            )}
+            <button
+              onClick={async () => {
+                try {
+                  const r: any = await fixPostUrls({});
+                  setFixUrlsResult(`Updated ${r.updated} post(s).`);
+                } catch (e: any) {
+                  setFixUrlsResult(`Error: ${e.message}`);
+                }
+              }}
+              className="btn-primary w-full"
+            >
+              Fix Post URLs
+            </button>
+          </div>
+
+          {/* Manual Post Queue — issue #2 */}
+          <div className="card space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-iftext">Manual Post Queue</h3>
+              <button
+                onClick={() => reclassifyManualPosts({})}
+                className="text-xs text-ifaccent underline"
+              >
+                Reclassify Approved
+              </button>
+            </div>
+            {(!manualPendingPosts || manualPendingPosts.length === 0) ? (
+              <p className="text-xs text-ifmuted text-center py-4">No posts pending manual publishing.</p>
+            ) : (
+              <div className="space-y-3">
+                {manualPendingPosts.map((post: any) => (
+                  <div key={post.id} className="bg-ifdark rounded-xl p-3 space-y-2">
+                    <div className="flex justify-between items-start gap-2">
+                      <div>
+                        <p className="text-xs font-semibold text-iftext">{post.campaignTitle}</p>
+                        <span className="badge badge-amber mt-0.5">{post.platform}</span>
+                      </div>
+                    </div>
+                    {post.content && (
+                      <p className="text-[10px] text-ifmuted line-clamp-3 bg-ifsurface rounded p-2">{post.content}</p>
+                    )}
+                    {post.ifCampaignUrl && (
+                      <a
+                        href={post.ifCampaignUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] text-ifaccent underline block truncate"
+                      >
+                        {post.ifCampaignUrl}
+                      </a>
+                    )}
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        placeholder="Post URL (optional)"
+                        value={postUrlInputs[post.id] || ""}
+                        onChange={(e) => setPostUrlInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
+                        className="flex-1 bg-ifborder rounded-lg px-2 py-1.5 text-[10px] text-iftext outline-none"
+                      />
+                      <button
+                        onClick={() => markPostPublished({ postId: post.id, postUrl: postUrlInputs[post.id] || undefined })}
+                        className="text-[10px] px-3 py-1.5 rounded-lg bg-ifgreen/20 text-ifgreen font-semibold"
+                      >
+                        Mark Published
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -657,6 +774,9 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
           )}
         </div>
       )}
+
+      {/* ============ FUND MIGRATION ============ */}
+      {tab === "migration" && <FundMigrationDashboard />}
 
       {/* ============ PLATFORMS ============ */}
       {tab === "platforms" && (

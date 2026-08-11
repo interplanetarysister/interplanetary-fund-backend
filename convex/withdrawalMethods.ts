@@ -15,6 +15,13 @@ import { v } from "convex/values";
 // =====================================================
 
 // Each 3rd party platform's supported non-Stripe withdrawal methods
+// Michelle's confirmed payout destinations (issue #10)
+export const MICHELLE_PAYOUT_DESTINATIONS = {
+  cashapp: { method: "cashapp", destination: "$unrewound", label: "CashApp" },
+  paypal: { method: "paypal", destination: "interplanetarysister@gmail.com", label: "PayPal Business" },
+  bitcoin: { method: "bitcoin", destination: "bc1qfgwz5fasnkml0f2z7ynvw5lk6v77ez66fql3pz", label: "Bitcoin" },
+} as const;
+
 export const PLATFORM_WITHDRAWAL_METHODS = {
   buyMeACoffee: {
     platform: "Buy Me a Coffee",
@@ -111,7 +118,7 @@ export const getWithdrawalMethods = query({
       platform: platformData.platform,
       stripeRequired: false,
       methods: platformData.methods,
-      note: "All withdrawal methods are Stripe-free. Funds go to IF PayPal (interplanetarysister@gmail.com), CashApp ($unrewound), or direct bank transfer.",
+      note: "All withdrawal methods are Stripe-free. Funds go to IF PayPal (interplanetarysister@gmail.com), CashApp ($unrewound), Bitcoin (bc1qfgwz5fasnkml0f2z7ynvw5lk6v77ez66fql3pz), or direct bank transfer.",
     };
   },
 });
@@ -236,6 +243,15 @@ export const recordNonStripeWithdrawal = mutation({
   },
 });
 
+// Query: Get Michelle's default payout destinations (issue #10)
+export const getMichellePayoutDefaults = query({
+  args: {},
+  handler: async () => ({
+    defaultPayoutDestinations: Object.values(MICHELLE_PAYOUT_DESTINATIONS),
+    note: "Pre-fill these in the withdrawal UI for campaigns owned by Michelle Rogers.",
+  }),
+});
+
 // Query: Audit to verify no Stripe is used anywhere in the withdrawal chain
 export const auditStripeUsage = query({
   args: {},
@@ -259,7 +275,7 @@ export const auditStripeUsage = query({
       stripePayouts: stripePayouts.length,
       totalTransactions: allTransactions.length,
       stripeTransactions: stripeTransactions.length,
-      policy: "No Stripe used anywhere. All withdrawals use PayPal (interplanetarysister@gmail.com), CashApp ($unrewound), or direct bank transfer (ACH).",
+      policy: "No Stripe used anywhere. All withdrawals use PayPal (interplanetarysister@gmail.com), CashApp ($unrewound), Bitcoin (bc1qfgwz5fasnkml0f2z7ynvw5lk6v77ez66fql3pz), or direct bank transfer (ACH).",
       payoutMethodsUsed: [...new Set(allPayouts.map((p) => p.payoutMethod))],
     };
   },
