@@ -35,6 +35,7 @@ export default apiHandler(async (ctx, input) => {
     story_present: camp.storyPresent ?? camp.story_present,
     cover_image_present: camp.coverImagePresent ?? camp.cover_image_present,
     summary: camp.summary,
+    fundraiser_event_description: camp.fundraiserEventDescription ?? camp.fundraiser_event_description,
     end_date: camp.endDate ?? camp.end_date,
     ai_priority: camp.aiPriority ?? camp.ai_priority,
     ai_tone: camp.aiTone ?? camp.ai_tone,

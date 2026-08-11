@@ -8,6 +8,7 @@ import { query, mutation, internalMutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { validateDonation } from "./security";
+import { normalizeOptionalText } from "./utils";
 
 export const getCampaigns = query({
   args: { 
@@ -82,6 +83,7 @@ export const syncCampaign = mutation({
     aiIdealDonors: v.optional(v.string()), aiInterestedOrgs: v.optional(v.string()),
     aiPlatforms: v.optional(v.string()), aiPriority: v.optional(v.string()),
     storyPresent: v.optional(v.boolean()), summary: v.optional(v.string()),
+    fundraiserEventDescription: v.optional(v.string()),
     category: v.optional(v.string()), endDate: v.optional(v.string()),
     coverImagePresent: v.optional(v.boolean()), paymentActive: v.optional(v.boolean()),
   },
@@ -94,6 +96,7 @@ export const syncCampaign = mutation({
       status: args.status || "active",
       raisedAmount: args.raisedAmount ?? 0, donorCount: args.donorCount ?? 0,
       summary: args.summary || `${args.title} — a campaign by Interplanetary Fund.`,
+      fundraiserEventDescription: normalizeOptionalText(args.fundraiserEventDescription),
       category: args.category || "general",
       aiTone: args.aiTone || "emotional", aiPriority: args.aiPriority || "emotional",
       aiPlatforms: args.aiPlatforms || "Facebook, Instagram, Email",
@@ -116,6 +119,7 @@ export const bulkSyncCampaigns = mutation({
     aiIdealDonors: v.optional(v.string()), aiInterestedOrgs: v.optional(v.string()),
     aiPlatforms: v.optional(v.string()), aiPriority: v.optional(v.string()),
     storyPresent: v.optional(v.boolean()), summary: v.optional(v.string()),
+    fundraiserEventDescription: v.optional(v.string()),
     category: v.optional(v.string()), endDate: v.optional(v.string()),
     coverImagePresent: v.optional(v.boolean()), paymentActive: v.optional(v.boolean()),
   })) },
@@ -128,6 +132,7 @@ export const bulkSyncCampaigns = mutation({
         ...c, outreachEnabled: true, paymentActive: true,
         status: c.status || "active", raisedAmount: c.raisedAmount ?? 0, donorCount: c.donorCount ?? 0,
         summary: c.summary || `${c.title} — a campaign by Interplanetary Fund.`,
+        fundraiserEventDescription: normalizeOptionalText(c.fundraiserEventDescription),
         category: c.category || "general",
         aiTone: c.aiTone || "emotional", aiPriority: c.aiPriority || "emotional",
         aiPlatforms: c.aiPlatforms || "Facebook, Instagram, Email",
