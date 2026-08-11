@@ -4,7 +4,7 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation } from "./_generated/server";
 import { validateDonation, checkRateLimit } from "./security";
 import { v } from "convex/values";
 
@@ -266,6 +266,91 @@ export const batchMigrate = mutation({
         withdrawnBy: args.withdrawnBy,
       },
       details: results,
+    };
+  },
+});
+
+// Scheduled workflow: check platform balances and queue migration when balance > 0
+export const checkBalancesAndQueueMigrations = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const platforms = await ctx.db.query("externalPlatforms").collect();
+    const campaigns = await ctx.db.query("monitoredCampaigns").collect();
+    const transactions = await ctx.db.query("transactions").collect();
+    const positiveBalances = platforms.filter((p) => (p.externalTotal || 0) > 0);
+    const queued = [];
+    const skipped = [];
+    const now = new Date().toISOString();
+
+    for (const platform of positiveBalances) {
+      const hasQueued = transactions.some((t) =>
+        t.type === "fund_migration_detected" &&
+        t.status === "queued" &&
+        t.campaignId === platform.campaignId &&
+        (t.sourcePlatform || "").toLowerCase() === (platform.platform || "").toLowerCase()
+      );
+
+      if (hasQueued) {
+        skipped.push({
+          campaignId: platform.campaignId,
+          platform: platform.platform,
+          reason: "already_queued",
+        });
+        continue;
+      }
+
+      const grossAmount = platform.externalTotal || 0;
+      const platformFee = grossAmount * 0.05;
+      const processingFee = grossAmount * 0.029 + 0.30;
+      const totalFees = platformFee + processingFee;
+      const netAmount = grossAmount - totalFees;
+
+      const transactionId = await ctx.db.insert("transactions", {
+        userId: platform.campaignId,
+        campaignId: platform.campaignId,
+        sourcePlatform: platform.platform,
+        type: "fund_migration_detected",
+        amount: grossAmount,
+        status: "queued",
+        createdAt: now,
+      });
+
+      const payoutId = await ctx.db.insert("payoutRequests", {
+        userId: platform.campaignId,
+        amountRequested: grossAmount,
+        feeAmount: totalFees,
+        netAmount,
+        payoutMethod: "pending",
+        payoutDestination: "pending",
+        status: "pending_user_selection",
+        requestedDate: now,
+        adminReviewStatus: "auto_queued",
+        adminReviewNote: `Auto-queued from ${platform.platform}; transaction=${transactionId}`,
+      });
+
+      await ctx.db.patch(platform._id, {
+        status: "migration_pending",
+        lastError: "",
+        lastSynced: now,
+      });
+
+      const campaign = campaigns.find((c) => c.ifCampaignId === platform.campaignId);
+      queued.push({
+        campaignId: platform.campaignId,
+        campaignTitle: campaign?.title || platform.displayName || "Unknown campaign",
+        platform: platform.platform,
+        grossAmount,
+        netAmount,
+        payoutId,
+      });
+    }
+
+    return {
+      status: "success",
+      positiveBalancesFound: positiveBalances.length,
+      migrationsQueued: queued.length,
+      queued,
+      skipped,
     };
   },
 });
