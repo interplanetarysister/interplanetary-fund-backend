@@ -18,7 +18,7 @@ export const createCheckoutSession = mutation({
     message: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    checkRateLimit("checkout", 10, 60000); // Max 10 per minute
+    checkRateLimit("checkout_write", 10, 60000); // Max 10 per minute
     if (!validateDonation(args.amount || 0)) {
       throw new Error("Invalid donation amount.");
     }
@@ -62,25 +62,43 @@ export const confirmDonation = mutation({
     paypalTransactionId: v.string(),
   },
   handler: async (ctx, args) => {
-    checkRateLimit("checkout", 10, 60000); // Max 10 per minute
+    checkRateLimit("checkout_write", 10, 60000); // Max 10 per minute
+    const paypalTransactionId = args.paypalTransactionId.trim();
+    if (!paypalTransactionId) {
+      throw new Error("PayPal transaction ID is required.");
+    }
+    const now = new Date().toISOString();
     const donation = await ctx.db.get(args.donationId);
     if (!donation) {
       throw new Error("Donation not found");
     }
-    if (donation.providerTransactionId && donation.providerTransactionId === args.paypalTransactionId) {
-      return { status: "success", summary: { donation: donation.amount } };
+    const hasConfirmedStatus = donation.status === "confirmed" || donation.status === "completed";
+    if (donation.confirmedAt && !hasConfirmedStatus) {
+      throw new Error("Donation confirmation state is inconsistent. Please investigate before retrying.");
     }
-    if (donation.status === "confirmed" || donation.status === "completed") {
-      return { status: "success", summary: { donation: donation.amount } };
+    if (hasConfirmedStatus) {
+      if (donation.providerTransactionId && donation.providerTransactionId !== paypalTransactionId) {
+        throw new Error("Donation already confirmed with a different PayPal transaction ID.");
+      }
+      const patch: Record<string, string> = {};
+      if (!donation.providerTransactionId) {
+        patch.providerTransactionId = paypalTransactionId;
+      }
+      if (!donation.confirmedAt) patch.confirmedAt = now;
+      if (Object.keys(patch).length > 0) {
+        patch.updatedAt = now;
+        await ctx.db.patch(args.donationId, patch);
+      }
+      return { status: "success", alreadyConfirmed: true, summary: { donation: donation.amount } };
     }
 
     // Mark donation as completed
     await ctx.db.patch(args.donationId, {
       status: "confirmed",
-      providerTransactionId: args.paypalTransactionId,
+      providerTransactionId: paypalTransactionId,
       provider: "paypal",
-      updatedAt: new Date().toISOString(),
-      confirmedAt: new Date().toISOString(),
+      updatedAt: now,
+      confirmedAt: now,
     });
 
     // Update campaign raised amount
@@ -107,11 +125,11 @@ export const confirmDonation = mutation({
       type: "donation_received",
       amount: donation.amount,
       status: "confirmed",
-      createdAt: new Date().toISOString(),
+      createdAt: now,
       paymentMethod: "paypal",
       paymentProvider: "paypal",
       currency: "USD",
-      providerTransactionId: args.paypalTransactionId,
+      providerTransactionId: paypalTransactionId,
       donationId: donation._id,
       paymentReference: donation.paymentReference,
     });
@@ -132,7 +150,7 @@ export const confirmDonation = mutation({
 export const getDonations = query({
   args: { campaignId: v.string() },
   handler: async (ctx, args) => {
-    checkRateLimit("checkout", 10, 60000); // Max 10 per minute
+    checkRateLimit("checkout_read", 60, 60000); // Max 60 reads per minute
     return await ctx.db
       .query("donations")
       .withIndex("byCampaignId", (q) => q.eq("campaignId", args.campaignId))

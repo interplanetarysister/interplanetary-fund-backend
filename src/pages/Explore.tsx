@@ -256,6 +256,11 @@ export default function Explore() {
                 {c.summary && (
                   <p className="text-xs text-ifmuted mt-1 line-clamp-2">{c.summary}</p>
                 )}
+                {c.fundraiserEventDescription && (
+                  <p className="text-[11px] text-ifcyan mt-2 line-clamp-2">
+                    Event: {c.fundraiserEventDescription}
+                  </p>
+                )}
 
                 <div className="mt-3">
                   <div className="flex justify-between text-xs mb-1">

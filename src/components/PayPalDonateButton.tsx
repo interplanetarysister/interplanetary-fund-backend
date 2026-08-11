@@ -5,6 +5,8 @@
  */
 
 import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
 interface PayPalDonateButtonProps {
   campaignId: string;
@@ -20,29 +22,40 @@ export function PayPalDonateButton({
   const [amount, setAmount] = useState("");
   const [donorName, setDonorName] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const createCheckoutSession = useMutation(api.paypalCheckout.createCheckoutSession);
 
   const presetAmounts = [10, 25, 50, 100];
 
-  const handleDonate = (presetAmount?: number) => {
+  const handleDonate = async (presetAmount?: number) => {
     const donationAmount = presetAmount || parseFloat(amount);
     if (!donationAmount || donationAmount < 1) {
       alert("Please enter an amount of at least $1");
       return;
     }
+    setIsProcessing(true);
 
-    // Build PayPal donate URL
-    const paypalUrl = new URL("https://www.paypal.com/donate");
-    paypalUrl.searchParams.set("cmd", "_donations");
-    paypalUrl.searchParams.set("business", businessEmail);
-    paypalUrl.searchParams.set("item_name", `${campaignTitle} - Interplanetary Fund`);
-    paypalUrl.searchParams.set("amount", donationAmount.toString());
-    paypalUrl.searchParams.set("currency_code", "USD");
-    // Track which campaign this donation is for
-    paypalUrl.searchParams.set("custom", campaignId);
-    // Note: actual donation record creation requires Convex deployment
-    // and PayPal IPN (Instant Payment Notification) setup
-
-    window.open(paypalUrl.toString(), "_blank");
+    try {
+      const session = await createCheckoutSession({
+        campaignId,
+        campaignTitle,
+        amount: donationAmount,
+        donorName: donorName || "Anonymous",
+      });
+      window.open(session.checkoutUrl, "_blank");
+    } catch (error) {
+      console.error("Checkout session failed; opening direct PayPal link without platform tracking.", error);
+      const paypalUrl = new URL("https://www.paypal.com/donate");
+      paypalUrl.searchParams.set("cmd", "_donations");
+      paypalUrl.searchParams.set("business", businessEmail);
+      paypalUrl.searchParams.set("item_name", `${campaignTitle} - Interplanetary Fund`);
+      paypalUrl.searchParams.set("amount", donationAmount.toString());
+      paypalUrl.searchParams.set("currency_code", "USD");
+      paypalUrl.searchParams.set("custom", campaignId);
+      window.open(paypalUrl.toString(), "_blank");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -63,6 +76,7 @@ export function PayPalDonateButton({
               <button
                 key={amt}
                 onClick={() => handleDonate(amt)}
+                disabled={isProcessing}
                 className="py-2 rounded-lg border-2 border-gray-200 hover:border-[#0070ba] hover:bg-blue-50 font-semibold transition-colors"
               >
                 ${amt}
@@ -82,9 +96,10 @@ export function PayPalDonateButton({
             />
             <button
               onClick={() => handleDonate()}
+              disabled={isProcessing}
               className="px-6 py-2 rounded-lg font-bold text-white bg-[#0070ba] hover:bg-[#005ea6] transition-colors"
             >
-              Donate
+              {isProcessing ? "Opening..." : "Donate"}
             </button>
           </div>
 

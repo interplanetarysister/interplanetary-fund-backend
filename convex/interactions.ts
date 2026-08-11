@@ -227,6 +227,7 @@ export const bulkUpdateCampaigns = mutation({
       aiPriority: v.optional(v.string()),
       aiIdealDonors: v.optional(v.string()),
       aiPlatforms: v.optional(v.string()),
+      fundraiserEventDescription: v.optional(v.string()),
     }),
   },
   handler: async (ctx, { campaignIds, updates }) => {
@@ -255,6 +256,7 @@ export const bulkUpdateCampaigns = mutation({
         if (updates.aiPriority !== undefined) patch.aiPriority = updates.aiPriority;
         if (updates.aiIdealDonors !== undefined) patch.aiIdealDonors = updates.aiIdealDonors;
         if (updates.aiPlatforms !== undefined) patch.aiPlatforms = updates.aiPlatforms;
+        if (updates.fundraiserEventDescription !== undefined) patch.fundraiserEventDescription = updates.fundraiserEventDescription;
 
         await ctx.db.patch(campaign._id, patch);
         updated++;
