@@ -7,6 +7,11 @@
 import { query, mutation, internalMutation } from "./_generated/server";
 import { validateDonation, validateWithdrawal, checkRateLimit } from "./security";
 import { v } from "convex/values";
+import {
+  calculateAllocationBasedBalances,
+  isReleasableAllocation,
+  resolveRequestedPayoutAmount,
+} from "./treasuryBalance";
 
 // =====================================================
 // TREASURY MANAGEMENT (Credit-Free — fee calculation)
@@ -260,17 +265,21 @@ export const createDeposit = mutation({
 export const requestPayout = mutation({
   args: {
     userId: v.string(),
+    amount: v.optional(v.number()),
     payoutMethod: v.string(),
     payoutDestination: v.string(),
   },
   handler: async (ctx, args) => {
     checkRateLimit("payout_request", 3, 300000);
-    const account = await ctx.db.query("holdingAccounts")
-      .filter((q) => q.eq("userId", args.userId))
-      .first();
+    const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId);
+    const account = balanceSummary.account;
 
     if (!account || account.totalBalance <= 0) {
       throw new Error("Insufficient balance");
+    }
+
+    if (balanceSummary.availableForPayout <= 0) {
+      throw new Error("Insufficient available balance");
     }
 
     // FRAUD CHECK — block payouts for frozen accounts
@@ -278,12 +287,17 @@ export const requestPayout = mutation({
       throw new Error("Account is frozen. Contact support.");
     }
 
+    const now = new Date().toISOString();
+    const gross = resolveRequestedPayoutAmount({
+      requestedAmount: args.amount,
+      availableBalance: balanceSummary.availableForPayout,
+    });
+
     const feeConfigs = await ctx.db.query("feeConfig").filter((q) => q.eq("active", true)).first();
     const platformFeePercent = feeConfigs?.platformFeePercent ?? 5;
     const processingFeePercent = feeConfigs?.processingFeePercent ?? 2.9;
     const processingFeeFlat = feeConfigs?.processingFeeFlat ?? 0.30;
 
-    const gross = account.totalBalance;
     const platformFee = gross * (platformFeePercent / 100);
     const processingFee = gross * (processingFeePercent / 100) + processingFeeFlat;
     const totalFees = platformFee + processingFee;
@@ -297,10 +311,8 @@ export const requestPayout = mutation({
       payoutMethod: args.payoutMethod,
       payoutDestination: args.payoutDestination,
       status: "pending",
-      requestedDate: new Date().toISOString(),
+      requestedDate: now,
     });
-
-    const now = new Date().toISOString();
 
     // Update holding account
     await ctx.db.patch(account._id, {
@@ -335,8 +347,13 @@ export const requestPayout = mutation({
       .query("allocations")
       .withIndex("byUserId", (q) => q.eq("userId", args.userId))
       .collect();
-    for (const alloc of openAllocations.filter((a) => a.status === "allocated")) {
+
+    let amountRemaining = gross;
+    const releasableAllocations = openAllocations.filter((a) => isReleasableAllocation(a, now));
+    for (const alloc of releasableAllocations) {
+      if (amountRemaining <= 0) break;
       await ctx.db.patch(alloc._id, { status: "payout_pending" });
+      amountRemaining -= alloc.netAmount;
     }
 
     return {
@@ -445,9 +462,8 @@ export const updateFeeConfig = mutation({
 export const getBalanceSummary = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    const account = await ctx.db.query("holdingAccounts")
-      .withIndex("byUserId", (q) => q.eq("userId", args.userId))
-      .first();
+    const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId);
+    const account = balanceSummary.account;
 
     if (!account) {
       return {
@@ -459,28 +475,44 @@ export const getBalanceSummary = query({
       };
     }
 
-    // Pending balance = funds in allocations that are still in escrow
-    const now = new Date().toISOString();
-    const escrowedAllocations = await ctx.db
-      .query("allocations")
-      .withIndex("byUserId", (q) => q.eq("userId", args.userId))
-      .collect();
-
-    const pendingBalance = escrowedAllocations
-      .filter((a) => a.status === "allocated" && a.escrowReleaseAt && a.escrowReleaseAt > now)
-      .reduce((sum, a) => sum + a.netAmount, 0);
-
-    const availableForPayout = Math.max(0, account.totalBalance - account.pendingPayouts - pendingBalance);
-
     return {
       totalBalance: account.totalBalance,
-      pendingBalance,
-      availableForPayout,
+      pendingBalance: balanceSummary.pendingBalance,
+      availableForPayout: balanceSummary.availableForPayout,
       totalFeesDeducted: account.totalFeesDeducted,
       totalPaidOut: account.totalPaidOut,
     };
   },
 });
+
+async function getAllocationBasedBalanceSummary(ctx: any, userId: string) {
+  const account = await ctx.db
+    .query("holdingAccounts")
+    .withIndex("byUserId", (q: any) => q.eq("userId", userId))
+    .first();
+
+  if (!account) {
+    return { account: null, pendingBalance: 0, availableForPayout: 0 };
+  }
+
+  const allocations = await ctx.db
+    .query("allocations")
+    .withIndex("byUserId", (q: any) => q.eq("userId", userId))
+    .collect();
+
+  const { pendingBalance, availableBalance } = calculateAllocationBasedBalances({
+    totalBalance: account.totalBalance,
+    pendingPayouts: account.pendingPayouts,
+    allocations,
+    nowIso: new Date().toISOString(),
+  });
+
+  return {
+    account,
+    pendingBalance,
+    availableForPayout: availableBalance,
+  };
+}
 
 // Mutation: Record a chargeback or refund (admin-gated; writes negative ledger entry)
 export const recordChargeback = mutation({
