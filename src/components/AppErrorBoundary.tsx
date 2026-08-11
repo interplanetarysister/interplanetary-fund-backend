@@ -7,16 +7,14 @@ type Props = {
 
 type State = {
   hasError: boolean;
+  resetKey: number;
 };
 
 export class AppErrorBoundary extends React.Component<Props, State> {
-  state: State = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
+  state: State = { hasError: false, resetKey: 0 };
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
+    this.setState({ hasError: true });
     logRuntimeError(error, {
       type: "react.error_boundary",
       componentStack: info.componentStack,
@@ -33,6 +31,14 @@ export class AppErrorBoundary extends React.Component<Props, State> {
               Please refresh to continue using Interplanetary Fund.
             </p>
             <button
+              onClick={() =>
+                this.setState((prev) => ({ hasError: false, resetKey: prev.resetKey + 1 }))
+              }
+              className="mt-4 w-full py-2.5 rounded-xl border border-ifborder text-iftext text-sm font-semibold"
+            >
+              Try again
+            </button>
+            <button
               onClick={() => window.location.reload()}
               className="mt-4 w-full py-2.5 rounded-xl bg-ifaccent text-white text-sm font-semibold"
             >
@@ -42,6 +48,6 @@ export class AppErrorBoundary extends React.Component<Props, State> {
         </div>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
