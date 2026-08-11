@@ -10,6 +10,7 @@ import type { AdminUser } from "../types";
 import PermissionsManager from "../components/PermissionsManager";
 import FraudControl from "../components/FraudControl";
 import UserManagement from "../components/UserManagement";
+import { FundMigrationDashboard } from "../components/FundMigrationDashboard";
 import { api } from "../../convex/_generated/api";
 
 type AdminTab =
@@ -17,6 +18,7 @@ type AdminTab =
   | "campaigns"
   | "agents"
   | "treasury"
+  | "migration"
   | "platforms"
   | "reports"
   | "interactions"
@@ -28,6 +30,7 @@ const TAB_PERMISSIONS: Record<AdminTab, string> = {
   campaigns: "campaigns",
   agents: "all",       // agent management is super-admin only
   treasury: "finance",
+  migration: "finance",
   platforms: "platforms",
   reports: "reports",
   interactions: "reports",
@@ -41,6 +44,7 @@ const ALL_TABS: { id: AdminTab; label: string }[] = [
   { id: "campaigns", label: "Campaigns" },
   { id: "agents", label: "Agents" },
   { id: "treasury", label: "Treasury" },
+  { id: "migration", label: "Migrate Funds" },
   { id: "platforms", label: "Platforms" },
   { id: "reports", label: "Reports" },
   { id: "interactions", label: "Activity" },
@@ -657,6 +661,9 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
           )}
         </div>
       )}
+
+      {/* ============ FUND MIGRATION ============ */}
+      {tab === "migration" && <FundMigrationDashboard />}
 
       {/* ============ PLATFORMS ============ */}
       {tab === "platforms" && (

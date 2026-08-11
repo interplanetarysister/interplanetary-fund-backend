@@ -114,11 +114,21 @@ export default function Explore() {
         amount: numericAmount,
         donorName: donorName || "Anonymous",
         message: donationMessage || undefined,
-        paymentMethod: "cashapp",
+        paymentMethod,
       });
 
-      const cashappPayUrl = `${CASHAPP_URL}/${numericAmount}`;
-      window.open(cashappPayUrl, "_blank");
+      if (paymentMethod === "paypal") {
+        const paypalUrl = new URL("https://www.paypal.com/donate");
+        paypalUrl.searchParams.set("business", PAYPAL_BUSINESS);
+        paypalUrl.searchParams.set("item_name", `${selectedCampaign.title} — Interplanetary Fund`);
+        paypalUrl.searchParams.set("amount", numericAmount.toFixed(2));
+        paypalUrl.searchParams.set("currency_code", "USD");
+        paypalUrl.searchParams.set("custom", selectedCampaign.ifCampaignId);
+        window.open(paypalUrl.toString(), "_blank");
+      } else {
+        const cashappPayUrl = `${CASHAPP_URL}/${numericAmount}`;
+        window.open(cashappPayUrl, "_blank");
+      }
 
       setDonationStep("done");
     } catch (e) {
@@ -367,21 +377,42 @@ export default function Explore() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-ifborder">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-                      <span className="text-sm">$$</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-iftext">Pay with CashApp</p>
-                      <p className="text-[10px] text-ifmuted">Tapping donate opens CashApp to complete payment</p>
-                    </div>
+                <div className="pt-2 border-t border-ifborder space-y-3">
+                  <p className="text-xs text-ifmuted font-semibold">Choose payment method</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setPaymentMethod("paypal")}
+                      className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
+                        paymentMethod === "paypal"
+                          ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
+                          : "border-ifborder text-ifmuted"
+                      }`}
+                    >
+                      💙 PayPal
+                    </button>
+                    <button
+                      onClick={() => setPaymentMethod("cashapp")}
+                      className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
+                        paymentMethod === "cashapp"
+                          ? "border-green-500 bg-green-500/10 text-green-600"
+                          : "border-ifborder text-ifmuted"
+                      }`}
+                    >
+                      💚 CashApp
+                    </button>
                   </div>
+                  <p className="text-[10px] text-ifmuted text-center">
+                    {paymentMethod === "paypal"
+                      ? "Opens PayPal — pay with balance, card, or bank"
+                      : "Opens CashApp — pay with $unrewound"}
+                  </p>
                   <button
                     onClick={handleCompleteDonation}
-                    className="w-full py-3 rounded-xl bg-green-600 text-white text-sm font-semibold active:scale-[0.98] transition-transform flex items-center justify-center gap-2"
+                    className={`w-full py-3 rounded-xl text-white text-sm font-semibold active:scale-[0.98] transition-transform ${
+                      paymentMethod === "paypal" ? "bg-[#0070ba] hover:bg-[#005ea6]" : "bg-green-600 hover:bg-green-700"
+                    }`}
                   >
-                    Donate ${numericAmount.toLocaleString()} via CashApp
+                    Donate ${numericAmount.toLocaleString()} via {paymentMethod === "paypal" ? "PayPal" : "CashApp"}
                   </button>
                 </div>
               </>
@@ -391,7 +422,9 @@ export default function Explore() {
             {donationStep === "processing" && (
               <div className="py-8 text-center">
                 <div className="w-10 h-10 border-2 border-ifaccent border-t-transparent rounded-full animate-spin mx-auto" />
-                <p className="text-sm text-ifmuted mt-3">Opening CashApp...</p>
+                <p className="text-sm text-ifmuted mt-3">
+                  Opening {paymentMethod === "paypal" ? "PayPal" : "CashApp"}...
+                </p>
               </div>
             )}
 
@@ -407,17 +440,36 @@ export default function Explore() {
                     Your ${numericAmount.toLocaleString()} donation to "{selectedCampaign.title}" has been recorded.
                   </p>
                   <p className="text-[10px] text-ifmuted mt-2">
-                    Complete your payment in CashApp if it didn't open automatically.
+                    Complete your payment in {paymentMethod === "paypal" ? "PayPal" : "CashApp"} if it didn't open automatically.
                   </p>
                 </div>
-                <a
-                  href={`${CASHAPP_URL}/${numericAmount}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full py-3 rounded-xl bg-green-600 text-white text-sm font-semibold text-center"
-                >
-                  Open CashApp
-                </a>
+                {paymentMethod === "paypal" ? (
+                  <a
+                    href={(() => {
+                      const u = new URL("https://www.paypal.com/donate");
+                      u.searchParams.set("business", PAYPAL_BUSINESS);
+                      u.searchParams.set("item_name", `${selectedCampaign.title} — Interplanetary Fund`);
+                      u.searchParams.set("amount", numericAmount.toFixed(2));
+                      u.searchParams.set("currency_code", "USD");
+                      u.searchParams.set("custom", selectedCampaign.ifCampaignId);
+                      return u.toString();
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full py-3 rounded-xl bg-[#0070ba] text-white text-sm font-semibold text-center"
+                  >
+                    Open PayPal
+                  </a>
+                ) : (
+                  <a
+                    href={`${CASHAPP_URL}/${numericAmount}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full py-3 rounded-xl bg-green-600 text-white text-sm font-semibold text-center"
+                  >
+                    Open CashApp
+                  </a>
+                )}
                 <button
                   onClick={handleCloseModal}
                   className="w-full py-3 rounded-xl bg-ifborder text-iftext text-sm font-semibold"
