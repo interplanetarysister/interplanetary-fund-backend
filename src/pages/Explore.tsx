@@ -4,15 +4,18 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePaginatedQuery, useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import QRCode from "qrcode";
 
 const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
+const CASHAPP_TAG = "unrewound";
+const CASHAPP_URL = `https://cash.app/$${CASHAPP_TAG}`;
+const IF_APP_BASE_URL = "https://interplanetary-fund.vercel.app";
+const PAYPAL_BUSINESS = "interplanetarysister@gmail.com";
 const MIN_AMOUNT = 1;
 
-type PaymentMethod = "cashapp" | "paypal" | "bitcoin";
+type PaymentMethod = "cashapp" | "paypal";
 
 export default function Explore() {
   // Paginated campaigns — loads 8 at a time, more on scroll
@@ -24,56 +27,16 @@ export default function Explore() {
   // Lightweight stats query — just numbers, no campaign data
   const stats = useQuery(api.campaigns.getCampaignStats, {});
   const balances = useQuery(api.treasury.aggregateBalances, {});
-  const paymentMethods = useQuery((api as any).paymentRouter.getAvailablePaymentMethods, {});
-  const createDonationIntent = useMutation((api as any).paymentRouter.createDonationIntent);
-  const verifyBitcoinDonation = useMutation((api as any).paymentRouter.verifyBitcoinDonation);
+  const recordDonation = useMutation(api.campaigns.recordDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
 
   const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
   const [donationAmount, setDonationAmount] = useState<string>("25");
   const [donorName, setDonorName] = useState("");
   const [donationMessage, setDonationMessage] = useState("");
-  const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done" | "bitcoin">("amount");
+  const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done">("amount");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
   const [viewedCampaigns, setViewedCampaigns] = useState<Set<string>>(new Set());
-  const [intentResult, setIntentResult] = useState<any | null>(null);
-  const [bitcoinQr, setBitcoinQr] = useState("");
-  const [verificationResult, setVerificationResult] = useState<any | null>(null);
-  const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
-  const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
-  const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
-
-  useEffect(() => {
-    if (!paymentMethods) return;
-    if (!isMethodAvailable(paymentMethod) && firstAvailableMethod) {
-      setPaymentMethod(firstAvailableMethod);
-    }
-  }, [paymentMethods, paymentMethod, firstAvailableMethod]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const uri = intentResult?.bitcoin?.paymentUri;
-    if (!uri) {
-      setBitcoinQr("");
-      return;
-    }
-
-    QRCode.toDataURL(uri, { errorCorrectionLevel: "M", margin: 1, width: 240 })
-      .then((value) => {
-        if (!cancelled) {
-          setBitcoinQr(value);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setBitcoinQr("");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [intentResult?.bitcoin?.paymentUri]);
 
   if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {
     return (
@@ -115,15 +78,11 @@ export default function Explore() {
     setDonationAmount("25");
     setDonorName("");
     setDonationMessage("");
-    setIntentResult(null);
-    setVerificationResult(null);
     setDonationStep("amount");
   };
 
   const handleCloseModal = () => {
     setSelectedCampaign(null);
-    setIntentResult(null);
-    setVerificationResult(null);
     setDonationStep("amount");
   };
 
@@ -147,59 +106,34 @@ export default function Explore() {
 
   const handleCompleteDonation = async () => {
     if (!selectedCampaign || !isValidAmount) return;
-    if (!isMethodAvailable(paymentMethod)) {
-      alert("This payment method is not currently configured.");
-      return;
-    }
     setDonationStep("processing");
     try {
-      const idempotencyKey = `${selectedCampaign.ifCampaignId}:${paymentMethod}:${numericAmount.toFixed(2)}:${Date.now()}`;
-      const intent = await createDonationIntent({
+      await recordDonation({
         campaignId: selectedCampaign.ifCampaignId,
         campaignTitle: selectedCampaign.title,
-        amountUSD: numericAmount,
-        donorName: donorName || undefined,
+        amount: numericAmount,
+        donorName: donorName || "Anonymous",
         message: donationMessage || undefined,
         paymentMethod,
-        idempotencyKey,
       });
-      setIntentResult(intent);
 
       if (paymentMethod === "paypal") {
-        if (!intent?.checkout?.url) {
-          throw new Error("PayPal checkout is not available right now.");
-        }
-        window.open(intent.checkout.url, "_blank");
-        setDonationStep("done");
-        return;
+        const paypalUrl = new URL("https://www.paypal.com/donate");
+        paypalUrl.searchParams.set("business", PAYPAL_BUSINESS);
+        paypalUrl.searchParams.set("item_name", `${selectedCampaign.title} — Interplanetary Fund`);
+        paypalUrl.searchParams.set("amount", numericAmount.toFixed(2));
+        paypalUrl.searchParams.set("currency_code", "USD");
+        paypalUrl.searchParams.set("custom", selectedCampaign.ifCampaignId);
+        window.open(paypalUrl.toString(), "_blank");
+      } else {
+        const cashappPayUrl = `${CASHAPP_URL}/${numericAmount}`;
+        window.open(cashappPayUrl, "_blank");
       }
 
-      if (paymentMethod === "cashapp") {
-        if (!intent?.checkout?.url) {
-          throw new Error("Cash App checkout is not available right now.");
-        }
-        window.open(intent.checkout.url, "_blank");
-        setDonationStep("done");
-        return;
-      }
-
-      setDonationStep("bitcoin");
-    } catch (e: any) {
+      setDonationStep("done");
+    } catch (e) {
       setDonationStep("amount");
-      alert(e?.message || "Something went wrong. Please try again.");
-    }
-  };
-
-  const handleVerifyBitcoin = async () => {
-    if (!intentResult?.donationId) return;
-    try {
-      const result = await verifyBitcoinDonation({ donationId: intentResult.donationId });
-      setVerificationResult(result);
-      if (result?.status === "confirmed") {
-        setDonationStep("done");
-      }
-    } catch (e: any) {
-      setVerificationResult({ status: "failed", reason: e?.message || "Verification failed" });
+      alert("Something went wrong. Please try again.");
     }
   };
 
@@ -445,65 +379,40 @@ export default function Explore() {
 
                 <div className="pt-2 border-t border-ifborder space-y-3">
                   <p className="text-xs text-ifmuted font-semibold">Choose payment method</p>
-                  {!paymentMethods && (
-                    <p className="text-[10px] text-ifmuted text-center">Loading payment options...</p>
-                  )}
-                  <div className="grid grid-cols-3 gap-2">
-                    {isMethodAvailable("paypal") && (
-                      <button
-                        onClick={() => setPaymentMethod("paypal")}
-                        className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
-                          paymentMethod === "paypal"
-                            ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
-                            : "border-ifborder text-ifmuted"
-                        }`}
-                      >
-                        💙 PayPal
-                      </button>
-                    )}
-                    {isMethodAvailable("cashapp") && (
-                      <button
-                        onClick={() => setPaymentMethod("cashapp")}
-                        className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
-                          paymentMethod === "cashapp"
-                            ? "border-green-500 bg-green-500/10 text-green-600"
-                            : "border-ifborder text-ifmuted"
-                        }`}
-                      >
-                        💚 CashApp
-                      </button>
-                    )}
-                    {isMethodAvailable("bitcoin") && (
-                      <button
-                        onClick={() => setPaymentMethod("bitcoin")}
-                        className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
-                          paymentMethod === "bitcoin"
-                            ? "border-ifamber bg-ifamber/10 text-ifamber"
-                            : "border-ifborder text-ifmuted"
-                        }`}
-                      >
-                        ₿ Bitcoin
-                      </button>
-                    )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setPaymentMethod("paypal")}
+                      className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
+                        paymentMethod === "paypal"
+                          ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
+                          : "border-ifborder text-ifmuted"
+                      }`}
+                    >
+                      💙 PayPal
+                    </button>
+                    <button
+                      onClick={() => setPaymentMethod("cashapp")}
+                      className={`py-2.5 rounded-xl border-2 text-xs font-semibold transition-colors ${
+                        paymentMethod === "cashapp"
+                          ? "border-green-500 bg-green-500/10 text-green-600"
+                          : "border-ifborder text-ifmuted"
+                      }`}
+                    >
+                      💚 CashApp
+                    </button>
                   </div>
                   <p className="text-[10px] text-ifmuted text-center">
                     {paymentMethod === "paypal"
                       ? "Opens PayPal — pay with balance, card, or bank"
-                      : paymentMethod === "cashapp"
-                        ? "Opens CashApp — external link flow (not auto-confirmed)."
-                        : "Shows Bitcoin address + QR and confirms on-chain after required confirmations."}
+                      : "Opens CashApp — pay with $unrewound"}
                   </p>
                   <button
                     onClick={handleCompleteDonation}
                     className={`w-full py-3 rounded-xl text-white text-sm font-semibold active:scale-[0.98] transition-transform ${
-                      paymentMethod === "paypal"
-                        ? "bg-[#0070ba] hover:bg-[#005ea6]"
-                        : paymentMethod === "cashapp"
-                          ? "bg-green-600 hover:bg-green-700"
-                          : "bg-ifamber hover:opacity-90"
+                      paymentMethod === "paypal" ? "bg-[#0070ba] hover:bg-[#005ea6]" : "bg-green-600 hover:bg-green-700"
                     }`}
                   >
-                    Donate ${numericAmount.toLocaleString()} via {paymentMethod === "paypal" ? "PayPal" : paymentMethod === "cashapp" ? "CashApp" : "Bitcoin"}
+                    Donate ${numericAmount.toLocaleString()} via {paymentMethod === "paypal" ? "PayPal" : "CashApp"}
                   </button>
                 </div>
               </>
@@ -514,45 +423,8 @@ export default function Explore() {
               <div className="py-8 text-center">
                 <div className="w-10 h-10 border-2 border-ifaccent border-t-transparent rounded-full animate-spin mx-auto" />
                 <p className="text-sm text-ifmuted mt-3">
-                  Preparing {paymentMethod === "paypal" ? "PayPal" : paymentMethod === "cashapp" ? "CashApp" : "Bitcoin"} checkout...
+                  Opening {paymentMethod === "paypal" ? "PayPal" : "CashApp"}...
                 </p>
-              </div>
-            )}
-
-            {/* Bitcoin step */}
-            {donationStep === "bitcoin" && intentResult?.bitcoin && (
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-base font-bold text-iftext">Send Bitcoin</h3>
-                  <p className="text-xs text-ifmuted mt-1">
-                    Donation #{intentResult.paymentReference}
-                  </p>
-                </div>
-                {bitcoinQr && (
-                  <img
-                    src={bitcoinQr}
-                    alt="Bitcoin payment QR code"
-                    className="mx-auto w-48 h-48 rounded-xl bg-white p-2"
-                  />
-                )}
-                <div className="bg-ifborder rounded-xl p-3 space-y-1 text-xs text-ifmuted break-all">
-                  <p><span className="text-iftext font-semibold">USD:</span> ${numericAmount.toFixed(2)}</p>
-                  <p><span className="text-iftext font-semibold">BTC:</span> {intentResult.bitcoin.btcAmount}</p>
-                  <p><span className="text-iftext font-semibold">Address:</span> {intentResult.bitcoin.address}</p>
-                  <p><span className="text-iftext font-semibold">Expires:</span> {new Date(intentResult.bitcoin.expiresAt).toLocaleString()}</p>
-                  <p><span className="text-iftext font-semibold">Status:</span> {verificationResult?.status || intentResult.bitcoin.status}</p>
-                </div>
-                <button
-                  onClick={handleVerifyBitcoin}
-                  className="w-full py-3 rounded-xl bg-ifamber text-white text-sm font-semibold"
-                >
-                  Check blockchain status
-                </button>
-                {verificationResult?.nextVerificationAt && (
-                  <p className="text-[10px] text-ifmuted text-center">
-                    Next check available after {new Date(verificationResult.nextVerificationAt).toLocaleTimeString()}.
-                  </p>
-                )}
               </div>
             )}
 
@@ -565,36 +437,38 @@ export default function Explore() {
                 <div>
                   <h3 className="text-base font-bold text-iftext">Thank you!</h3>
                   <p className="text-sm text-ifmuted mt-1">
-                    Your ${numericAmount.toLocaleString()} donation intent for "{selectedCampaign.title}" was created.
+                    Your ${numericAmount.toLocaleString()} donation to "{selectedCampaign.title}" has been recorded.
                   </p>
                   <p className="text-[10px] text-ifmuted mt-2">
-                    {paymentMethod === "bitcoin"
-                      ? "Bitcoin donations are only marked confirmed after on-chain verification and required confirmations."
-                      : `Complete your payment in ${paymentMethod === "paypal" ? "PayPal" : "CashApp"} if it didn't open automatically.`}
+                    Complete your payment in {paymentMethod === "paypal" ? "PayPal" : "CashApp"} if it didn't open automatically.
                   </p>
                 </div>
                 {paymentMethod === "paypal" ? (
                   <a
-                    href={intentResult?.checkout?.url || "#"}
+                    href={(() => {
+                      const u = new URL("https://www.paypal.com/donate");
+                      u.searchParams.set("business", PAYPAL_BUSINESS);
+                      u.searchParams.set("item_name", `${selectedCampaign.title} — Interplanetary Fund`);
+                      u.searchParams.set("amount", numericAmount.toFixed(2));
+                      u.searchParams.set("currency_code", "USD");
+                      u.searchParams.set("custom", selectedCampaign.ifCampaignId);
+                      return u.toString();
+                    })()}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block w-full py-3 rounded-xl bg-[#0070ba] text-white text-sm font-semibold text-center"
                   >
                     Open PayPal
                   </a>
-                ) : paymentMethod === "cashapp" ? (
+                ) : (
                   <a
-                    href={intentResult?.checkout?.url || "#"}
+                    href={`${CASHAPP_URL}/${numericAmount}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="block w-full py-3 rounded-xl bg-green-600 text-white text-sm font-semibold text-center"
                   >
                     Open CashApp
                   </a>
-                ) : (
-                  <div className="w-full py-3 rounded-xl bg-ifborder text-iftext text-sm font-semibold text-center">
-                    Bitcoin status: {verificationResult?.status || intentResult?.status || "pending"}
-                  </div>
                 )}
                 <button
                   onClick={handleCloseModal}
