@@ -9,6 +9,8 @@ import { v } from "convex/values";
 
 const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
 const IF_APP_BASE_URL = "https://interplanetary-fund.vercel.app";
+const IF_APP_HOST = new URL(IF_APP_BASE_URL).host;
+const BASE44_APP_HOST = new URL("https://base44-dispatcher-production.base44.workers.dev").host;
 
 function generatePayPalLink(campaignTitle: string): string {
   const params = new URLSearchParams({
@@ -22,6 +24,21 @@ function generatePayPalLink(campaignTitle: string): string {
 
 function generateIFCampaignUrl(campaignId: string): string {
   return `${IF_APP_BASE_URL}/campaign/${campaignId}`;
+}
+
+function textContainsHost(content: string | undefined, expectedHost: string): boolean {
+  if (!content) {
+    return false;
+  }
+
+  const urls = content.match(/https?:\/\/[^\s<>"')]+/g) ?? [];
+  return urls.some((url) => {
+    try {
+      return new URL(url).host === expectedHost;
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Platform-specific constraints for full campaign listings
@@ -173,8 +190,8 @@ export const fixDistributedPostUrls = mutation({
     const posts = await ctx.db.query("distributedPosts").collect();
     let fixed = 0;
     for (const post of posts) {
-      const hasBase44Url = post.content?.includes("base44-dispatcher-production");
-      const missingIfUrl = !post.content?.includes(IF_APP_BASE_URL);
+      const hasBase44Url = textContainsHost(post.content, BASE44_APP_HOST);
+      const missingIfUrl = !textContainsHost(post.content, IF_APP_HOST);
       if (hasBase44Url || missingIfUrl) {
         const ifUrl = generateIFCampaignUrl(post.campaignId);
         let newContent = post.content || "";
@@ -184,7 +201,7 @@ export const fixDistributedPostUrls = mutation({
           ifUrl
         );
         // If still no IF app URL, append it
-        if (!newContent.includes(IF_APP_BASE_URL)) {
+        if (!textContainsHost(newContent, IF_APP_HOST)) {
           newContent += `\n\n🔗 Campaign page: ${ifUrl}`;
         }
         await ctx.db.patch(post._id, {
@@ -207,7 +224,7 @@ export const auditPostLinks = query({
       (p) => !p.content || !p.content.includes("paypal.com/donate")
     );
     const wrongUrl = posts.filter(
-      (p) => p.content?.includes("base44-dispatcher-production")
+      (p) => textContainsHost(p.content, BASE44_APP_HOST)
     );
     return {
       totalPosts: posts.length,
