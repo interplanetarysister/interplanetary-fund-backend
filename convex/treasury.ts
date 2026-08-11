@@ -271,7 +271,8 @@ export const requestPayout = mutation({
   },
   handler: async (ctx, args) => {
     checkRateLimit("payout_request", 3, 300000);
-    const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId);
+    const now = new Date().toISOString();
+    const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId, now);
     const account = balanceSummary.account;
 
     if (!account) {
@@ -287,7 +288,6 @@ export const requestPayout = mutation({
       throw new Error("Account is frozen. Contact support.");
     }
 
-    const now = new Date().toISOString();
     const gross = resolveRequestedPayoutAmount({
       requestedAmount: args.amount,
       availableBalance: balanceSummary.availableForPayout,
@@ -462,7 +462,7 @@ export const updateFeeConfig = mutation({
 export const getBalanceSummary = query({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
-    const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId);
+    const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId, new Date().toISOString());
     const account = balanceSummary.account;
 
     if (!account) {
@@ -485,7 +485,7 @@ export const getBalanceSummary = query({
   },
 });
 
-async function getAllocationBasedBalanceSummary(ctx: any, userId: string) {
+async function getAllocationBasedBalanceSummary(ctx: any, userId: string, nowIso: string) {
   const account = await ctx.db
     .query("holdingAccounts")
     .withIndex("byUserId", (q: any) => q.eq("userId", userId))
@@ -504,7 +504,7 @@ async function getAllocationBasedBalanceSummary(ctx: any, userId: string) {
     totalBalance: account.totalBalance,
     pendingPayouts: account.pendingPayouts,
     allocations,
-    nowIso: new Date().toISOString(),
+    nowIso,
   });
 
   return {

@@ -94,6 +94,21 @@ test("funds become available after escrowReleaseAt passes", () => {
   assert.equal(afterRelease.availableBalance, 75);
 });
 
+test("missing or null escrowReleaseAt is treated as releasable", () => {
+  const { availableBalance, pendingBalance } = calculateAllocationBasedBalances({
+    totalBalance: 100,
+    pendingPayouts: 0,
+    allocations: [
+      { status: "allocated", netAmount: 40 },
+      { status: "allocated", netAmount: 60, escrowReleaseAt: null },
+    ],
+    nowIso: NOW,
+  });
+
+  assert.equal(pendingBalance, 0);
+  assert.equal(availableBalance, 100);
+});
+
 test("repeated payout requests remain safe via pending payout accounting", () => {
   const base = calculateAllocationBasedBalances({
     totalBalance: 100,
