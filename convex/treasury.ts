@@ -274,7 +274,7 @@ export const requestPayout = mutation({
     const balanceSummary = await getAllocationBasedBalanceSummary(ctx, args.userId);
     const account = balanceSummary.account;
 
-    if (!account || account.totalBalance <= 0) {
+    if (!account) {
       throw new Error("Insufficient balance");
     }
 
