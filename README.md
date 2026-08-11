@@ -68,7 +68,7 @@ CONVEX_DEPLOY_KEY=<your-convex-deploy-key>
 
 # Convex payment router env (set with `npx convex env set`)
 PAYPAL_BUSINESS_EMAIL=<paypal business email>
-CASHAPP_CASHTAG=<cash app cashtag without @>
+CASHAPP_CASHTAG=<cash app cashtag without $>
 BITCOIN_DONATION_ADDRESS=<public btc receive address>
 BITCOIN_REQUIRED_CONFIRMATIONS=3
 BITCOIN_PAYMENT_EXPIRY_MINUTES=45

@@ -75,7 +75,7 @@ export default function Explore() {
     };
   }, [intentResult?.bitcoin?.paymentUri]);
 
-  if (campaignStatus === "LoadingFirstPage" || !stats || !balances || !paymentMethods) {
+  if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="w-8 h-8 border-2 border-ifaccent border-t-transparent rounded-full animate-spin" />
@@ -166,13 +166,19 @@ export default function Explore() {
       setIntentResult(intent);
 
       if (paymentMethod === "paypal") {
-        window.open(intent?.checkout?.url, "_blank");
+        if (!intent?.checkout?.url) {
+          throw new Error("PayPal checkout is not available right now.");
+        }
+        window.open(intent.checkout.url, "_blank");
         setDonationStep("done");
         return;
       }
 
       if (paymentMethod === "cashapp") {
-        window.open(intent?.checkout?.url, "_blank");
+        if (!intent?.checkout?.url) {
+          throw new Error("Cash App checkout is not available right now.");
+        }
+        window.open(intent.checkout.url, "_blank");
         setDonationStep("done");
         return;
       }
@@ -439,6 +445,9 @@ export default function Explore() {
 
                 <div className="pt-2 border-t border-ifborder space-y-3">
                   <p className="text-xs text-ifmuted font-semibold">Choose payment method</p>
+                  {!paymentMethods && (
+                    <p className="text-[10px] text-ifmuted text-center">Loading payment options...</p>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     {isMethodAvailable("paypal") && (
                       <button

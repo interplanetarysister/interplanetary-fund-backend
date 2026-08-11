@@ -11,6 +11,7 @@ import { checkRateLimit, validateDonation } from "./security";
 const USD_CURRENCY = "USD";
 const BTC_CURRENCY = "BTC";
 const SATOSHIS_PER_BTC = 100_000_000;
+const ONE_SATOSHI_BTC = 1 / SATOSHIS_PER_BTC;
 
 type PaymentMethod = "paypal" | "cashapp" | "bitcoin";
 
@@ -537,12 +538,12 @@ export const verifyBitcoinDonation = mutation({
 
     if (duplicateHash && duplicateHash._id !== donation._id) {
       await ctx.db.patch(donation._id, {
-        status: "failed",
+        status: "awaiting_payment",
         updatedAt: nowIso,
         bitcoinTxHash: candidateTx.txid,
         bitcoin: {
           ...donation.bitcoin,
-          status: "failed",
+          status: "awaiting_payment",
           txHash: candidateTx.txid,
           verificationAttempts: newAttempts,
           nextVerificationAt: nextIso,
@@ -551,13 +552,13 @@ export const verifyBitcoinDonation = mutation({
         },
       });
       return {
-        status: "failed",
+        status: "awaiting_payment",
         reason: "duplicate_blockchain_tx",
         txHash: candidateTx.txid,
       };
     }
 
-    if (!out || out.valueBtc + 0.00000001 < expectedBtc) {
+    if (!out || out.valueBtc + ONE_SATOSHI_BTC < expectedBtc) {
       await ctx.db.patch(donation._id, {
         status: "failed",
         updatedAt: nowIso,
