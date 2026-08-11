@@ -11,6 +11,9 @@ import QRCode from "qrcode";
 
 const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
 const MIN_AMOUNT = 1;
+const APK_DOWNLOAD_URL =
+  import.meta.env.VITE_APK_DOWNLOAD_URL ??
+  "https://github.com/interplanetarysister/interplanetary-fund-backend/releases/latest";
 
 type PaymentMethod = "cashapp" | "paypal" | "bitcoin";
 
@@ -205,6 +208,23 @@ export default function Explore() {
 
   return (
     <div className="space-y-5">
+      {/* Launch Announcement */}
+      <div className="rounded-2xl bg-gradient-to-br from-ifgreen/20 to-ifaccent/20 border border-ifgreen/40 p-5">
+        <p className="text-[10px] uppercase tracking-[0.16em] text-ifgreen font-semibold">Launch Live</p>
+        <h2 className="text-lg font-bold text-iftext mt-1">Interplanetary Fund is now public</h2>
+        <p className="text-xs text-ifmuted mt-2">
+          Download the Android APK and join the launch on your phone.
+        </p>
+        <a
+          href={APK_DOWNLOAD_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-ifaccent px-4 py-3 text-sm font-semibold text-white shadow-glow-purple"
+        >
+          Download Android APK
+        </a>
+      </div>
+
       {/* Hero Banner */}
       <div className="rounded-2xl bg-gradient-to-br from-ifaccent/20 to-ifcyan/10 border border-ifborder p-5">
         <h2 className="text-xl font-bold text-iftext">Together we can</h2>

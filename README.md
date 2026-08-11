@@ -56,6 +56,8 @@ See [MOBILE_BUILD.md](./MOBILE_BUILD.md) for full mobile build instructions.
 ```bash
 # .env.local (development)
 VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
+VITE_APK_DOWNLOAD_URL=https://github.com/interplanetarysister/interplanetary-fund-backend/releases/latest
+VITE_LOG_ENDPOINT=<optional logging endpoint>
 VITE_PAYPAL_BUSINESS_EMAIL=<optional>
 VITE_CASHAPP_CASHTAG=<optional>
 
