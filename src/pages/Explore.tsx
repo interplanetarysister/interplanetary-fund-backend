@@ -11,7 +11,11 @@ import { api } from "../../convex/_generated/api";
 const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
 const CASHAPP_TAG = "unrewound";
 const CASHAPP_URL = `https://cash.app/$${CASHAPP_TAG}`;
+const IF_APP_BASE_URL = "https://interplanetary-fund.vercel.app";
+const PAYPAL_BUSINESS = "interplanetarysister@gmail.com";
 const MIN_AMOUNT = 1;
+
+type PaymentMethod = "cashapp" | "paypal";
 
 export default function Explore() {
   // Paginated campaigns — loads 8 at a time, more on scroll
@@ -31,6 +35,7 @@ export default function Explore() {
   const [donorName, setDonorName] = useState("");
   const [donationMessage, setDonationMessage] = useState("");
   const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done">("amount");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
   const [viewedCampaigns, setViewedCampaigns] = useState<Set<string>>(new Set());
 
   if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {

@@ -66,6 +66,7 @@ export default defineSchema({
     externalRaised: v.optional(v.number()),
     externalDonors: v.optional(v.number()),
     platformCount: v.optional(v.number()),
+    cashappTag: v.optional(v.string()),
     frozen: v.optional(v.boolean()),
     frozenReason: v.optional(v.string()),
     frozenAt: v.optional(v.string()),
@@ -111,6 +112,8 @@ export default defineSchema({
     externalUrl: v.string(),
     lastSynced: v.string(),
     lastError: v.string(),
+    linkClicks: v.optional(v.number()),
+    listingType: v.optional(v.string()),
   }).index("byPlatform", ["platform"]).index("byCampaignId", ["campaignId"]),
 
   // HOLDING ACCOUNTS
@@ -296,6 +299,8 @@ export default defineSchema({
     postType: v.string(),
     content: v.string(),
     paypalLink: v.optional(v.string()),
+    ifCampaignUrl: v.optional(v.string()),
+    listingType: v.optional(v.string()),
     postUrl: v.optional(v.string()),
     status: v.string(),
     scheduledFor: v.optional(v.string()),
