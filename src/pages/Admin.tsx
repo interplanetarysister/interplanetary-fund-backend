@@ -17,6 +17,7 @@ type AdminTab =
   | "overview"
   | "campaigns"
   | "agents"
+  | "automations"
   | "treasury"
   | "migration"
   | "platforms"
@@ -29,6 +30,7 @@ const TAB_PERMISSIONS: Record<AdminTab, string> = {
   overview: "all",
   campaigns: "campaigns",
   agents: "all",       // agent management is super-admin only
+  automations: "all",  // automation debug is super-admin only
   treasury: "finance",
   migration: "finance",
   platforms: "platforms",
@@ -43,6 +45,7 @@ const ALL_TABS: { id: AdminTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "campaigns", label: "Campaigns" },
   { id: "agents", label: "Agents" },
+  { id: "automations", label: "Automations" },
   { id: "treasury", label: "Treasury" },
   { id: "migration", label: "Migrate Funds" },
   { id: "platforms", label: "Platforms" },
@@ -81,6 +84,7 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
   const balances = useQuery(api.treasury.aggregateBalances, {});
   const agentsStats = useQuery(api.agents.getAgentStats, {});
   const agentsList = useQuery(api.agents.getAgents, {});
+  const automationDebug = useQuery(api.postContent.getAutomationDebugStats, {});
   const campaigns = useQuery(api.campaigns.getCampaigns, {});
   const latestReport = useQuery(api.protocol.getLatestReport, {});
   const reports = useQuery(api.protocol.getReports, { limit: 10 });
@@ -585,6 +589,133 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ============ AUTOMATIONS ============ */}
+      {tab === "automations" && (
+        <div className="space-y-3">
+          {/* Cron Schedule */}
+          <div className="card">
+            <h3 className="text-sm font-semibold text-iftext mb-3">⏰ Cron Schedule (UTC)</h3>
+            {[
+              { name: "Raised-Amount Sync", schedule: "Daily 12:00 UTC (5am PT)", func: "syncRaisedAmounts" },
+              { name: "Protocol Enforcement", schedule: "Daily 13:00 UTC (6am PT)", func: "protocol.weeklyTraining" },
+              { name: "Campaign Defaults", schedule: "Daily 14:00 UTC (7am PT)", func: "campaignDefaultsInternal" },
+              { name: "Post Generation", schedule: "Daily 15:00 UTC (8am PT)", func: "postContent.autoGeneratePosts" },
+              { name: "Auto-Publish Pipeline", schedule: "Daily 15:30 UTC (8:30am PT)", func: "postContent.autoPublishApprovedPosts" },
+              { name: "Platform Balance Check", schedule: "Daily 16:00 UTC (9am PT)", func: "fundMigration.checkBalances" },
+              { name: "Weekly Training", schedule: "Saturday 09:00 UTC (2am PT)", func: "protocol.weeklyTraining" },
+              { name: "Weekly Balance Check", schedule: "Sunday 13:00 UTC (6am PT)", func: "syncRaisedAmounts.weeklyBalanceCheck" },
+              { name: "Platform Cleanup", schedule: "Monday 10:00 UTC (3am PT)", func: "cleanupPlatformsInternal" },
+            ].map((job) => (
+              <div key={job.name} className="flex items-start justify-between py-1.5 border-b border-ifborder last:border-0">
+                <div>
+                  <p className="text-xs font-medium text-iftext">{job.name}</p>
+                  <p className="text-[10px] text-ifmuted font-mono">{job.func}</p>
+                </div>
+                <span className="text-[10px] text-ifcyan whitespace-nowrap ml-2">{job.schedule}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Post Pipeline Status */}
+          {automationDebug && (
+            <>
+              <div className="card">
+                <h3 className="text-sm font-semibold text-iftext mb-3">📬 Post Pipeline — {automationDebug.totalPosts} total</h3>
+                {Object.keys(automationDebug.byStatus).length === 0 && (
+                  <p className="text-xs text-ifmuted">No posts generated yet. Runs daily at 8am PT.</p>
+                )}
+                <div className="space-y-1">
+                  {Object.entries(automationDebug.byStatus).map(([status, count]) => (
+                    <div key={status} className="flex justify-between items-center py-1">
+                      <span className="text-xs text-iftext font-mono">{status}</span>
+                      <span className={`badge ${
+                        status === "posted" ? "badge-green" :
+                        status === "failed" ? "badge-red" :
+                        status === "pending" ? "badge-cyan" :
+                        status === "manual_pending" ? "badge-amber" :
+                        "badge-muted"
+                      }`}>{count as number}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Link Health */}
+              <div className="card">
+                <h3 className="text-sm font-semibold text-iftext mb-3">🔗 Link Health</h3>
+                <div className="flex justify-between text-xs py-1 border-b border-ifborder">
+                  <span className="text-ifmuted">Posts missing PayPal link</span>
+                  <span className={automationDebug.missingPaypalLinks > 0 ? "text-ifred font-bold" : "text-ifgreen"}>
+                    {automationDebug.missingPaypalLinks}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs py-1">
+                  <span className="text-ifmuted">Posts with wrong/old URL</span>
+                  <span className={automationDebug.postsWithWrongUrl > 0 ? "text-ifred font-bold" : "text-ifgreen"}>
+                    {automationDebug.postsWithWrongUrl}
+                  </span>
+                </div>
+                {(automationDebug.missingPaypalLinks > 0 || automationDebug.postsWithWrongUrl > 0) && (
+                  <p className="text-[10px] text-ifamber mt-2">
+                    ⚠ Run <span className="font-mono">fixMissingPayPalLinks</span> or <span className="font-mono">fixDistributedPostUrls</span> from Convex dashboard to repair.
+                  </p>
+                )}
+              </div>
+
+              {/* Recent Failures */}
+              {automationDebug.recentFailures.length > 0 && (
+                <div className="card">
+                  <h3 className="text-sm font-semibold text-ifred mb-3">❌ Recent Post Failures ({automationDebug.recentFailures.length})</h3>
+                  {automationDebug.recentFailures.map((f: any) => (
+                    <div key={f.id} className="bg-ifdark rounded-lg px-3 py-2 mb-2">
+                      <div className="flex justify-between items-center mb-0.5">
+                        <span className="text-xs font-medium text-iftext">{f.campaignTitle}</span>
+                        <span className="badge badge-muted">{f.platform}</span>
+                      </div>
+                      <p className="text-[10px] text-ifred">{f.error}</p>
+                      <p className="text-[9px] text-ifmuted mt-0.5">{new Date(f.createdAt).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {automationDebug.recentFailures.length === 0 && (
+                <div className="card">
+                  <p className="text-xs text-ifgreen">✓ No post failures on record.</p>
+                </div>
+              )}
+            </>
+          )}
+          {!automationDebug && (
+            <p className="text-xs text-ifmuted text-center py-4">Loading automation stats…</p>
+          )}
+
+          {/* Agent Task Outcomes */}
+          {agentsList && agentsList.length > 0 && (
+            <div className="card">
+              <h3 className="text-sm font-semibold text-iftext mb-3">🤖 Agent Task Outcomes</h3>
+              {agentsList.map((a: any) => (
+                <div key={a._id} className="flex items-center justify-between py-1.5 border-b border-ifborder last:border-0">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-5 h-5 rounded flex items-center justify-center text-white text-[9px] font-bold"
+                      style={{ backgroundColor: a.accentColor || "#8b5cf6" }}
+                    >
+                      {a.name.split(" ").map((w: string) => w[0]).join("").slice(0, 2)}
+                    </div>
+                    <span className="text-xs text-iftext">{a.name}</span>
+                  </div>
+                  <div className="flex gap-2 text-[10px]">
+                    <span className="text-ifgreen">✓ {a.successfulOutcomes}</span>
+                    <span className="text-ifred">✗ {a.failedOutcomes}</span>
+                    <span className="text-ifmuted">{a.tasksCompleted} total</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

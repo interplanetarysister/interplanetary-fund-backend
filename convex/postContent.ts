@@ -675,3 +675,56 @@ export const markPostFailed = mutation({
     return { status: "success" };
   },
 });
+
+// =====================================================
+// AUTOMATION DEBUG — aggregate stats for the debug tab
+// =====================================================
+export const getAutomationDebugStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const posts = await ctx.db.query("distributedPosts").collect();
+
+    // Count by status
+    const byStatus: Record<string, number> = {};
+    for (const post of posts) {
+      byStatus[post.status] = (byStatus[post.status] || 0) + 1;
+    }
+
+    // Recent failures (last 20 failed posts, newest first)
+    const failed = posts
+      .filter((p) => p.status === "failed" && p.error)
+      .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1))
+      .slice(0, 20)
+      .map((p) => ({
+        id: p._id,
+        campaignTitle: p.campaignTitle,
+        platform: p.platform,
+        error: p.error,
+        createdAt: p.createdAt,
+      }));
+
+    // Posts missing PayPal links (platforms that allow them)
+    const allowsPaypal = new Set([
+      "indiegogo", "givesendgo", "fundrazr", "buymeacoffee", "patreon",
+      "ko-fi", "facebook", "bluesky",
+    ]);
+    const missingPaypal = posts.filter((p) => {
+      const norm = normalizePlatform(p.platform);
+      if (!allowsPaypal.has(norm)) return false;
+      return !p.content || !p.content.includes("paypal.com/donate");
+    }).length;
+
+    // Posts with wrong (old Base44) URL
+    const wrongUrl = posts.filter((p) =>
+      textContainsHost(p.content, BASE44_APP_HOST)
+    ).length;
+
+    return {
+      totalPosts: posts.length,
+      byStatus,
+      missingPaypalLinks: missingPaypal,
+      postsWithWrongUrl: wrongUrl,
+      recentFailures: failed,
+    };
+  },
+});
