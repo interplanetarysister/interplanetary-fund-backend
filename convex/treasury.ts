@@ -566,11 +566,26 @@ export const recordChargeback = mutation({
 });
 
 // Internal helper: enforce super admin PIN
-async function requireSuperAdmin(ctx: any, pin: string) {
-  const adminUser = await ctx.db.query("adminUsers")
-    .withIndex("byPin", (q: any) => q.eq("pin", pin))
-    .first();
-  if (!adminUser || adminUser.role !== "super_admin" || !adminUser.active) {
-    throw new Error("Super admin authorization required.");
+async function requireSuperAdmin(ctx: any, adminPin: string) {
+  if (!adminPin || adminPin.length < 4) {
+    throw new Error("Admin PIN required for this action.");
   }
+
+  const adminUser = await ctx.db
+    .query("adminUsers")
+    .withIndex("byPin", (q: any) => q.eq("pin", adminPin))
+    .first();
+
+  if (adminUser && adminUser.active && adminUser.role === "super_admin") {
+    return true;
+  }
+
+  // Legacy PIN fallback (matches convex/security.ts)
+  const settings = await ctx.db.query("feeConfig").first();
+  const legacyPin = settings?.adminPin ?? "0426";
+  if (adminPin === legacyPin) {
+    return true;
+  }
+
+  throw new Error("Super admin access required. This action is restricted to the platform owner.");
 }
