@@ -10,7 +10,8 @@ import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from "./App";
 import "./index.css";
 
-const convexUrl = import.meta.env.VITE_CONVEX_URL ?? "https://placeholder.convex.cloud";
+// Keep this fallback aligned with .env.example's VITE_CONVEX_URL value.
+const convexUrl = import.meta.env.VITE_CONVEX_URL ?? "https://rosy-butterfly-2.convex.cloud";
 const convex = new ConvexReactClient(convexUrl);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
