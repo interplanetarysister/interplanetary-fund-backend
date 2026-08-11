@@ -22,7 +22,7 @@ const crons = cronJobs();
 crons.daily(
   "daily-protocol-enforcement",
   { hourUTC: 13, minuteUTC: 0 },
-  internal.protocol.weeklyTraining,
+  internal.protocol.dailyProtocolAudit,
   {}
 );
 

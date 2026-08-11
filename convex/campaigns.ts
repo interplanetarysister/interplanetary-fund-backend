@@ -13,15 +13,24 @@ import { normalizeOptionalText } from "./utils";
 export const getCampaigns = query({
   args: { 
     status: v.optional(v.string()),
-    paginationOpts: paginationOptsValidator,
+    paginationOpts: v.optional(paginationOptsValidator),
   },
   handler: async (ctx, { status, paginationOpts }) => {
     const q = ctx.db.query("monitoredCampaigns");
     if (status) {
+      if (!paginationOpts) {
+        return await q
+          .withIndex("byStatus", (q) => q.eq("status", status))
+          .order("desc")
+          .collect();
+      }
       return await q
         .withIndex("byStatus", (q) => q.eq("status", status))
         .order("desc")
         .paginate(paginationOpts);
+    }
+    if (!paginationOpts) {
+      return await q.order("desc").collect();
     }
     return await q.order("desc").paginate(paginationOpts);
   },
@@ -157,26 +166,66 @@ export const getDonations = query({
 
 // FIXED external platform functions — match schema
 export const getExternalPlatforms = query({
-  args: { campaignId: v.optional(v.string()) },
-  handler: async (ctx, { campaignId }) => {
-    if (campaignId) {
-      return await ctx.db.query("externalPlatforms").withIndex("byCampaignId", (q) => q.eq("campaignId", campaignId)).collect();
-    }
-    return await ctx.db.query("externalPlatforms").collect();
+  args: {
+    campaignId: v.optional(v.string()),
+    userId: v.optional(v.string()),
+  },
+  handler: async (ctx, { campaignId, userId }) => {
+    const targetCampaignId = campaignId || userId;
+    const platforms = targetCampaignId
+      ? await ctx.db.query("externalPlatforms").withIndex("byCampaignId", (q) => q.eq("campaignId", targetCampaignId)).collect()
+      : await ctx.db.query("externalPlatforms").collect();
+
+    return platforms.map((platform) => ({
+      ...platform,
+      campaignTitle: platform.displayName,
+      platformName: platform.platform,
+      connectionType: platform.kind,
+      syncStatus: platform.status,
+      raisedAmount: platform.externalTotal,
+      donorCount: platform.externalDonorCount,
+    }));
   },
 });
 
 export const connectExternalPlatform = mutation({
   args: {
-    platform: v.string(), kind: v.string(), displayName: v.string(),
-    campaignId: v.string(), externalUrl: v.string(), automationMode: v.optional(v.string()),
+    platform: v.optional(v.string()),
+    kind: v.optional(v.string()),
+    displayName: v.optional(v.string()),
+    campaignId: v.optional(v.string()),
+    externalUrl: v.optional(v.string()),
+    automationMode: v.optional(v.string()),
+    userId: v.optional(v.string()),
+    platformName: v.optional(v.string()),
+    campaignUrl: v.optional(v.string()),
+    campaignTitle: v.optional(v.string()),
+    connectionType: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const campaignId = args.campaignId || args.userId;
+    const platform = args.platform || args.platformName;
+    const kind = args.kind || args.connectionType;
+    const displayName = args.displayName || args.campaignTitle;
+    const externalUrl = args.externalUrl || args.campaignUrl;
+    const automationMode = args.automationMode || args.connectionType;
+
+    if (!campaignId || !platform || !kind || !displayName || !externalUrl) {
+      throw new Error("Missing external platform connection details.");
+    }
+
     const platformId = await ctx.db.insert("externalPlatforms", {
-      platform: args.platform, kind: args.kind, displayName: args.displayName,
-      campaignId: args.campaignId, externalTotal: 0, externalDonorCount: 0,
-      status: "active", automationMode: args.automationMode || "manual",
-      externalUrl: args.externalUrl, lastSynced: new Date().toISOString(), lastError: "",
+      platform,
+      kind,
+      displayName,
+      campaignId,
+      externalTotal: 0,
+      externalDonorCount: 0,
+      status: "active",
+      automationMode: automationMode || "manual",
+      externalUrl,
+      lastSynced: new Date().toISOString(),
+      lastError: "",
     });
     return { status: "success", platformId };
   },

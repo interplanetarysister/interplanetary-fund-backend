@@ -11,106 +11,130 @@ import { v } from "convex/values";
 // PROTOCOL ENFORCEMENT (Credit-Free — runs as code)
 // =====================================================
 
+function buildProtocolAudit(campaigns: any[]) {
+  const results: any[] = [];
+  let compliantCount = 0;
+  let nonCompliantCount = 0;
+  const allViolations: any[] = [];
+  const allAutoFixes: any[] = [];
+
+  for (const campaign of campaigns) {
+    const violations: any[] = [];
+    const autoFixes: any[] = [];
+
+    if (!campaign.outreachEnabled) {
+      autoFixes.push({
+        standard: "P-1",
+        field: "outreachEnabled",
+        fix: true,
+        ifCampaignId: campaign.ifCampaignId,
+        message: "Outreach disabled — should be auto-fixed to true",
+      });
+    }
+
+    const aiFields = {
+      aiTone: campaign.aiTone,
+      aiIdealDonors: campaign.aiIdealDonors,
+      aiInterestedOrgs: campaign.aiInterestedOrgs,
+      aiPlatforms: campaign.aiPlatforms,
+    };
+    const missingAi = Object.entries(aiFields)
+      .filter(([_, value]) => !value || value === "")
+      .map(([field]) => field);
+    if (missingAi.length > 0) {
+      violations.push({ standard: "P-2", missingFields: missingAi });
+    }
+
+    if (!campaign.storyPresent) {
+      violations.push({ standard: "P-3", issue: "No story present" });
+    }
+    if (!campaign.summary || campaign.summary === "") {
+      violations.push({ standard: "P-3", issue: "No summary" });
+    }
+
+    if (campaign.status === "active" && !campaign.paymentActive) {
+      violations.push({ standard: "P-4", issue: "No payment path on active campaign", severity: "critical" });
+    }
+
+    if (!campaign.title) violations.push({ standard: "P-5", missing: "title" });
+    if (!campaign.category) violations.push({ standard: "P-5", missing: "category" });
+    if (!campaign.goalAmount || campaign.goalAmount <= 0) violations.push({ standard: "P-5", missing: "goalAmount" });
+    if (!campaign.coverImagePresent) violations.push({ standard: "P-5", missing: "coverImageUrl" });
+    if (campaign.status === "active" && !campaign.endDate) violations.push({ standard: "P-5", missing: "endDate on active campaign" });
+
+    const isCompliant = violations.length === 0 && autoFixes.length === 0;
+    if (isCompliant) compliantCount++; else nonCompliantCount++;
+
+    allViolations.push(...violations);
+    allAutoFixes.push(...autoFixes);
+
+    results.push({
+      campaignId: campaign.ifCampaignId,
+      title: campaign.title,
+      status: campaign.status,
+      goalAmount: campaign.goalAmount,
+      raisedAmount: campaign.raisedAmount,
+      donorCount: campaign.donorCount,
+      outreachEnabled: campaign.outreachEnabled,
+      complianceScore: Math.max(0, 6 - violations.length - autoFixes.length),
+      violations,
+      autoFixes,
+    });
+  }
+
+  const totalRaised = results.reduce((s, c) => s + (c.raisedAmount || 0), 0);
+  const totalGoal = results.reduce((s, c) => s + (c.goalAmount || 0), 0);
+  const totalDonors = results.reduce((s, c) => s + (c.donorCount || 0), 0);
+
+  return {
+    auditDate: new Date().toISOString(),
+    totalCampaigns: results.length,
+    compliant: compliantCount,
+    nonCompliant: nonCompliantCount,
+    revenueSummary: {
+      totalRaised,
+      totalGoal,
+      fundingGap: totalGoal - totalRaised,
+      totalDonors,
+    },
+    criticalViolations: allViolations.filter((violation) => violation.severity === "critical"),
+    autoFixesNeeded: allAutoFixes,
+    results,
+  };
+}
+
 // Query: Run full protocol audit (callable from client or cron)
 export const enforceProtocol = query({
   args: {},
   handler: async (ctx) => {
     const campaigns = await ctx.db.query("monitoredCampaigns").collect();
+    return buildProtocolAudit(campaigns);
+  },
+});
 
-    const results: any[] = [];
-    let compliantCount = 0;
-    let nonCompliantCount = 0;
-    const allViolations: any[] = [];
-    const allAutoFixes: any[] = [];
-
-    for (const campaign of campaigns) {
-      const violations: any[] = [];
-      const autoFixes: any[] = [];
-
-      // P-1: Outreach must be enabled
-      if (!campaign.outreachEnabled) {
-        autoFixes.push({
-          standard: "P-1",
-          field: "outreachEnabled",
-          fix: true,
-          ifCampaignId: campaign.ifCampaignId,
-          message: "Outreach disabled — should be auto-fixed to true",
-        });
-      }
-
-      // P-2: AI profile completeness
-      const aiFields = {
-        aiTone: campaign.aiTone,
-        aiIdealDonors: campaign.aiIdealDonors,
-        aiInterestedOrgs: campaign.aiInterestedOrgs,
-        aiPlatforms: campaign.aiPlatforms,
-      };
-      const missingAi = Object.entries(aiFields)
-        .filter(([_, value]) => !value || value === "")
-        .map(([field]) => field);
-      if (missingAi.length > 0) {
-        violations.push({ standard: "P-2", missingFields: missingAi });
-      }
-
-      // P-3: Story and summary
-      if (!campaign.storyPresent) {
-        violations.push({ standard: "P-3", issue: "No story present" });
-      }
-      if (!campaign.summary || campaign.summary === "") {
-        violations.push({ standard: "P-3", issue: "No summary" });
-      }
-
-      // P-4: Payment on active campaigns
-      if (campaign.status === "active" && !campaign.paymentActive) {
-        violations.push({ standard: "P-4", issue: "No payment path on active campaign", severity: "critical" });
-      }
-
-      // P-5: Required fields
-      if (!campaign.title) violations.push({ standard: "P-5", missing: "title" });
-      if (!campaign.category) violations.push({ standard: "P-5", missing: "category" });
-      if (!campaign.goalAmount || campaign.goalAmount <= 0) violations.push({ standard: "P-5", missing: "goalAmount" });
-      if (!campaign.coverImagePresent) violations.push({ standard: "P-5", missing: "coverImageUrl" });
-      if (campaign.status === "active" && !campaign.endDate) violations.push({ standard: "P-5", missing: "endDate on active campaign" });
-
-      const isCompliant = violations.length === 0 && autoFixes.length === 0;
-      if (isCompliant) compliantCount++; else nonCompliantCount++;
-
-      allViolations.push(...violations);
-      allAutoFixes.push(...autoFixes);
-
-      results.push({
-        campaignId: campaign.ifCampaignId,
-        title: campaign.title,
-        status: campaign.status,
-        goalAmount: campaign.goalAmount,
-        raisedAmount: campaign.raisedAmount,
-        donorCount: campaign.donorCount,
-        outreachEnabled: campaign.outreachEnabled,
-        complianceScore: Math.max(0, 6 - violations.length - autoFixes.length),
-        violations,
-        autoFixes,
-      });
-    }
-
-    const totalRaised = results.reduce((s, c) => s + (c.raisedAmount || 0), 0);
-    const totalGoal = results.reduce((s, c) => s + (c.goalAmount || 0), 0);
-    const totalDonors = results.reduce((s, c) => s + (c.donorCount || 0), 0);
-
-    return {
-      auditDate: new Date().toISOString(),
-      totalCampaigns: results.length,
-      compliant: compliantCount,
-      nonCompliant: nonCompliantCount,
-      revenueSummary: {
-        totalRaised,
-        totalGoal,
-        fundingGap: totalGoal - totalRaised,
-        totalDonors,
-      },
-      criticalViolations: allViolations.filter((v) => v.severity === "critical"),
-      autoFixesNeeded: allAutoFixes,
-      results,
-    };
+export const dailyProtocolAudit = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const audit = buildProtocolAudit(await ctx.db.query("monitoredCampaigns").collect());
+    await ctx.db.insert("protocolReports", {
+      reportType: "daily_protocol_audit",
+      auditDate: audit.auditDate,
+      totalCampaigns: audit.totalCampaigns,
+      compliantCampaigns: audit.compliant,
+      nonCompliantCampaigns: audit.nonCompliant,
+      totalRaised: audit.revenueSummary.totalRaised,
+      totalGoal: audit.revenueSummary.totalGoal,
+      fundingGap: audit.revenueSummary.fundingGap,
+      totalDonors: audit.revenueSummary.totalDonors,
+      criticalViolations: audit.criticalViolations,
+      results: audit.results.map((result) => ({
+        title: result.title,
+        complianceScore: result.complianceScore,
+        violations: result.violations.length,
+      })),
+      syncPerformed: false,
+    });
+    return audit;
   },
 });
 

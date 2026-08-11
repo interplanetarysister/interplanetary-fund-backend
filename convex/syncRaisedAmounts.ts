@@ -26,24 +26,40 @@ export const syncAllCampaignTotals = mutation({
 async function _syncAll(ctx: any) {
   const campaigns = await ctx.db.query("monitoredCampaigns").collect();
   const connections = await ctx.db.query("externalPlatforms").collect();
+  const totalsByCampaign = new Map<string, {
+    platformTotal: number;
+    platformDonors: number;
+    platformCount: number;
+  }>();
+
+  for (const connection of connections) {
+    const current = totalsByCampaign.get(connection.campaignId) || {
+      platformTotal: 0,
+      platformDonors: 0,
+      platformCount: 0,
+    };
+    current.platformTotal += connection.externalTotal || 0;
+    current.platformDonors += connection.externalDonorCount || 0;
+    current.platformCount += 1;
+    totalsByCampaign.set(connection.campaignId, current);
+  }
 
   const results = [];
 
   for (const campaign of campaigns) {
-    const platformTotal = connections
-      .filter((c: any) => c.campaignId === campaign.ifCampaignId)
-      .reduce((sum: number, c: any) => sum + (c.externalTotal || 0), 0);
-
-    const platformDonors = connections
-      .filter((c: any) => c.campaignId === campaign.ifCampaignId)
-      .reduce((sum: number, c: any) => sum + (c.externalDonorCount || 0), 0);
-
-    const platformCount = connections
-      .filter((c: any) => c.campaignId === campaign.ifCampaignId).length;
+    const totals = totalsByCampaign.get(campaign.ifCampaignId) || {
+      platformTotal: 0,
+      platformDonors: 0,
+      platformCount: 0,
+    };
+    const { platformTotal, platformDonors, platformCount } = totals;
 
     if (
       platformTotal !== campaign.raisedAmount ||
-      platformDonors !== campaign.donorCount
+      platformDonors !== campaign.donorCount ||
+      platformTotal !== (campaign.externalRaised || 0) ||
+      platformDonors !== (campaign.externalDonors || 0) ||
+      platformCount !== (campaign.platformCount || 0)
     ) {
       await ctx.db.patch(campaign._id, {
         raisedAmount: platformTotal,
