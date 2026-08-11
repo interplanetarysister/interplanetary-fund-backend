@@ -9,6 +9,7 @@ import { v } from "convex/values";
 
 const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
 const IF_APP_BASE_URL = "https://interplanetary-fund.vercel.app";
+const IF_APP_HOST = new URL(IF_APP_BASE_URL).hostname;
 
 function generatePayPalLink(campaignTitle: string): string {
   const params = new URLSearchParams({
@@ -22,6 +23,24 @@ function generatePayPalLink(campaignTitle: string): string {
 
 function generateIFCampaignUrl(campaignId: string): string {
   return `${IF_APP_BASE_URL}/campaign/${campaignId}`;
+}
+
+function containsTrustedIFCampaignUrl(content?: string): boolean {
+  if (!content) return false;
+  const urls = content.match(/https?:\/\/[^\s)>\]]+/g);
+  if (!urls) return false;
+  return urls.some((rawUrl) => {
+    try {
+      const parsed = new URL(rawUrl);
+      return (
+        parsed.protocol === "https:" &&
+        parsed.hostname === IF_APP_HOST &&
+        parsed.pathname.startsWith("/campaign/")
+      );
+    } catch {
+      return false;
+    }
+  });
 }
 
 // Platform-specific constraints for full campaign listings
@@ -174,7 +193,7 @@ export const fixDistributedPostUrls = mutation({
     let fixed = 0;
     for (const post of posts) {
       const hasBase44Url = post.content?.includes("base44-dispatcher-production");
-      const missingIfUrl = !post.content?.includes(IF_APP_BASE_URL);
+      const missingIfUrl = !containsTrustedIFCampaignUrl(post.content);
       if (hasBase44Url || missingIfUrl) {
         const ifUrl = generateIFCampaignUrl(post.campaignId);
         let newContent = post.content || "";
@@ -184,7 +203,7 @@ export const fixDistributedPostUrls = mutation({
           ifUrl
         );
         // If still no IF app URL, append it
-        if (!newContent.includes(IF_APP_BASE_URL)) {
+        if (!containsTrustedIFCampaignUrl(newContent)) {
           newContent += `\n\n🔗 Campaign page: ${ifUrl}`;
         }
         await ctx.db.patch(post._id, {
