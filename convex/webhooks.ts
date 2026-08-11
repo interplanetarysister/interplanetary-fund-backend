@@ -176,16 +176,20 @@ export const paypalWebhook = httpAction(async (ctx, request) => {
     const body = await request.text();
     const secret = process.env.PAYPAL_WEBHOOK_SECRET;
 
+    // Reject the request when no secret is configured — prevents open ingestion
+    if (!secret) {
+      console.warn("[webhooks/paypal] PAYPAL_WEBHOOK_SECRET not configured — event rejected");
+      return new Response("OK", { status: 200 });
+    }
+
     const params = new URLSearchParams(body);
 
     // Validate secret token (lightweight guard; full IPN verify requires a
     // back-channel POST to PayPal — add when a server-side fetch is available)
-    if (secret) {
-      const token = params.get("verification_token") ?? params.get("custom");
-      if (token !== secret) {
-        console.warn("[webhooks/paypal] Invalid token — event discarded");
-        return new Response("OK", { status: 200 });
-      }
+    const token = params.get("verification_token") ?? params.get("custom");
+    if (token !== secret) {
+      console.warn("[webhooks/paypal] Invalid token — event discarded");
+      return new Response("OK", { status: 200 });
     }
 
     const paymentStatus = params.get("payment_status");
@@ -312,6 +316,13 @@ export const bmacWebhook = httpAction(async (ctx, request) => {
 // Dashboard: Patreon → Developer Portal → Webhooks
 // Verification: HMAC-MD5 of raw body against X-Patreon-Signature header
 // Secret env var: PATREON_WEBHOOK_SECRET
+//
+// NOTE: The Web Crypto API (crypto.subtle) does NOT support HMAC-MD5.
+// Full signature verification requires a pure-JS MD5 library (e.g. @noble/hashes).
+// Until that dependency is added, we perform a presence check: the secret must be
+// set in the environment, and the signature header must be non-empty. This prevents
+// unauthenticated requests when no secret is configured, but does not cryptographically
+// validate the signature value itself. Add HMAC-MD5 verification before go-live.
 // ---------------------------------------------------------------------------
 export const patreonWebhook = httpAction(async (ctx, request) => {
   try {
@@ -319,25 +330,25 @@ export const patreonWebhook = httpAction(async (ctx, request) => {
     const signature = request.headers.get("x-patreon-signature") ?? "";
     const secret = process.env.PATREON_WEBHOOK_SECRET;
 
-    if (secret && signature) {
-      // Web Crypto HMAC-MD5 verification
-      const encoder = new TextEncoder();
-      const key = await crypto.subtle.importKey(
-        "raw",
-        encoder.encode(secret),
-        { name: "HMAC", hash: "MD5" },
-        false,
-        ["sign"]
-      );
-      const sigBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(body));
-      const computed = Array.from(new Uint8Array(sigBuffer))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-      if (computed !== signature) {
-        console.warn("[webhooks/patreon] Invalid signature — event discarded");
-        return new Response("OK", { status: 200 });
-      }
+    // Reject when secret is not configured — prevents open ingestion
+    if (!secret) {
+      console.warn("[webhooks/patreon] PATREON_WEBHOOK_SECRET not configured — event rejected");
+      return new Response("OK", { status: 200 });
     }
+
+    // Reject when Patreon sends no signature header (malformed or spoofed request)
+    if (!signature) {
+      console.warn("[webhooks/patreon] Missing x-patreon-signature header — event discarded");
+      return new Response("OK", { status: 200 });
+    }
+
+    // TODO: Replace the block above with full HMAC-MD5 verification once a
+    // pure-JS MD5 library (e.g. @noble/hashes/legacy) is added to the project.
+    // Example:
+    //   import { hmac } from "@noble/hashes/hmac";
+    //   import { md5 } from "@noble/hashes/legacy";
+    //   const computed = bytesToHex(hmac(md5, secret, body));
+    //   if (computed !== signature) { ... reject ... }
 
     const eventType = request.headers.get("x-patreon-event") ?? "";
     if (!eventType.startsWith("pledges:")) {

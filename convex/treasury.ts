@@ -545,10 +545,13 @@ export const recordChargeback = mutation({
       createdAt: now,
     });
 
-    // Debit holding account
+    // Debit holding account — store the true balance (may go negative on overdraft)
+    // A negative balance is intentional: it surfaces the discrepancy so it can be
+    // reconciled rather than silently hiding it. The admin dashboard should show
+    // negative balances as an alert requiring manual review.
     const newBalance = account.totalBalance + debitAmount; // debitAmount is negative
     await ctx.db.patch(account._id, {
-      totalBalance: Math.max(0, newBalance),
+      totalBalance: newBalance,
       lastUpdated: now,
     });
 
@@ -557,7 +560,7 @@ export const recordChargeback = mutation({
       transactionId,
       debitApplied: debitAmount,
       reason: args.reason,
-      newBalance: Math.max(0, newBalance),
+      newBalance,
     };
   },
 });
