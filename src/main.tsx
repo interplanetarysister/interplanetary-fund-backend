@@ -9,9 +9,10 @@ import ReactDOM from "react-dom/client";
 import { ConvexProvider, ConvexReactClient } from "convex/react";
 import App from "./App";
 import "./index.css";
+import { getConvexUrl, injectConvexPreconnect } from "./config/convex";
 
-// Keep this fallback aligned with .env.example's VITE_CONVEX_URL value.
-const convexUrl = import.meta.env.VITE_CONVEX_URL ?? "https://rosy-butterfly-2.convex.cloud";
+const convexUrl = getConvexUrl(import.meta.env.VITE_CONVEX_URL);
+injectConvexPreconnect(convexUrl);
 const convex = new ConvexReactClient(convexUrl);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

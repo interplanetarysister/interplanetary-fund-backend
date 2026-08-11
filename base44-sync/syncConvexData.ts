@@ -5,7 +5,14 @@
 //
 import { apiHandler } from '@base44/sdk';
 
-const CONVEX_URL = "https://rosy-butterfly-2.convex.cloud";
+const DEFAULT_CONVEX_URL = "https://rosy-butterfly-2.convex.cloud";
+const CONVEX_URL = (
+  (globalThis as any).process?.env?.CONVEX_URL ||
+  (globalThis as any).process?.env?.VITE_CONVEX_URL ||
+  (globalThis as any).Deno?.env?.get?.("CONVEX_URL") ||
+  (globalThis as any).Deno?.env?.get?.("VITE_CONVEX_URL") ||
+  DEFAULT_CONVEX_URL
+).replace(/\/+$/, "");
 
 async function convexQuery(path: string, args: Record<string, any> = {}) {
   const res = await fetch(`${CONVEX_URL}/api/query`, {

@@ -5,9 +5,16 @@
 // Flow: Base44 entities → this function → Convex REST API → Convex tables → React dashboard
 //
 // The function reads from the Base44 Interplanetary Fund app (6a67a778342a8fe05ee79cba)
-// and pushes the data to Convex (https://rosy-butterfly-2.convex.cloud)
+// and pushes the data to Convex
 
-const CONVEX_URL = "https://rosy-butterfly-2.convex.cloud";
+const DEFAULT_CONVEX_URL = "https://rosy-butterfly-2.convex.cloud";
+const CONVEX_URL = (
+  (globalThis as any).process?.env?.CONVEX_URL ||
+  (globalThis as any).process?.env?.VITE_CONVEX_URL ||
+  (globalThis as any).Deno?.env?.get?.("CONVEX_URL") ||
+  (globalThis as any).Deno?.env?.get?.("VITE_CONVEX_URL") ||
+  DEFAULT_CONVEX_URL
+).replace(/\/+$/, "");
 const IF_APP_ID = "6a67a778342a8fe05ee79cba";
 
 async function convexQuery(path: string, args: Record<string, any> = {}) {

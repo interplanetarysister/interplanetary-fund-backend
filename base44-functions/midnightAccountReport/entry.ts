@@ -1,12 +1,21 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+const DEFAULT_CONVEX_URL = "https://rosy-butterfly-2.convex.cloud";
+const CONVEX_URL = (
+  (globalThis as any).process?.env?.CONVEX_URL ||
+  (globalThis as any).process?.env?.VITE_CONVEX_URL ||
+  (globalThis as any).Deno?.env?.get?.("CONVEX_URL") ||
+  (globalThis as any).Deno?.env?.get?.("VITE_CONVEX_URL") ||
+  DEFAULT_CONVEX_URL
+).replace(/\/+$/, "");
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
     // 1. Get accounts created today from Convex
     const convexResponse = await fetch(
-      "https://rosy-butterfly-2.convex.cloud/api/query",
+      `${CONVEX_URL}/api/query`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -21,7 +30,7 @@ Deno.serve(async (req) => {
 
     // 2. Also get unreported accounts (in case some were missed)
     const unreportedResponse = await fetch(
-      "https://rosy-butterfly-2.convex.cloud/api/query",
+      `${CONVEX_URL}/api/query`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,7 +103,7 @@ Deno.serve(async (req) => {
     if (allAccounts.length > 0) {
       const accountIds = allAccounts.map((a: any) => a._id);
       await fetch(
-        "https://rosy-butterfly-2.convex.cloud/api/mutation",
+        `${CONVEX_URL}/api/mutation`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -1,11 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const DEFAULT_CONVEX_URL = "https://rosy-butterfly-2.convex.cloud";
+const convexUrl = (process.env.VITE_CONVEX_URL ?? DEFAULT_CONVEX_URL).replace(/\/+$/, "");
+
 export default defineConfig({
   plugins: [react()],
   base: "/",
   define: {
-    "process.env.CONVEX_URL": JSON.stringify(process.env.VITE_CONVEX_URL),
+    "process.env.CONVEX_URL": JSON.stringify(convexUrl),
   },
   // Modern build target — smaller output, faster parsing on Galaxy A16
   esbuild: {

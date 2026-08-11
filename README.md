@@ -26,7 +26,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system diagram.
 |---------|---------|---------------|
 | GitHub | Source code + Copilot | This repo |
 | Vercel | Web hosting | Auto-deploy from GitHub main branch |
-| Convex | Backend + database | `VITE_CONVEX_URL` env var |
+| Convex | Backend + database | `VITE_CONVEX_URL` (frontend) + `CONVEX_URL` (sync/runtime scripts) |
 | Base44 | APK production | Backend function syncs Convex → Base44 entities |
 | Copilot | AI code assistant | `.github/copilot-instructions.md` |
 
@@ -56,14 +56,17 @@ See [MOBILE_BUILD.md](./MOBILE_BUILD.md) for full mobile build instructions.
 ```bash
 # .env.local (development)
 VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
+CONVEX_URL=https://rosy-butterfly-2.convex.cloud
 VITE_PAYPAL_BUSINESS_EMAIL=<optional>
 VITE_CASHAPP_CASHTAG=<optional>
 
 # Vercel (production) — set in dashboard or CLI
 VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
+CONVEX_URL=https://rosy-butterfly-2.convex.cloud
 
 # GitHub Actions (CI/CD) — set as repository secrets
 VITE_CONVEX_URL=<your-convex-url>
+CONVEX_URL=<your-convex-url>
 CONVEX_DEPLOY_KEY=<your-convex-deploy-key>
 
 # Convex payment router env (set with `npx convex env set`)
