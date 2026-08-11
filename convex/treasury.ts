@@ -159,8 +159,16 @@ export const createDeposit = mutation({
     amount: v.number(),
     sourcePlatform: v.string(),
     campaignId: v.optional(v.string()),
+    // Optional FX fields for non-USD donations
+    currency: v.optional(v.string()),
+    nativeCurrency: v.optional(v.string()),
+    nativeAmount: v.optional(v.number()),
+    fxRate: v.optional(v.number()),
+    // Optional escrow hold period imposed by the source platform (in days)
+    escrowDays: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    const now = new Date().toISOString();
     const transactionId = await ctx.db.insert("transactions", {
       userId: args.userId,
       type: "deposit",
@@ -168,31 +176,83 @@ export const createDeposit = mutation({
       sourcePlatform: args.sourcePlatform,
       campaignId: args.campaignId,
       status: "completed",
-      createdAt: new Date().toISOString(),
+      currency: args.currency ?? "USD",
+      createdAt: now,
     });
 
-    // Update or create holding account
+    // --- Double-entry: write fee line items ---
+    const feeConfig = await ctx.db.query("feeConfig").filter((q) => q.eq("active", true)).first();
+    const platformFeePercent = feeConfig?.platformFeePercent ?? 5;
+    const processingFeePercent = feeConfig?.processingFeePercent ?? 2.9;
+    const processingFeeFlat = feeConfig?.processingFeeFlat ?? 0.30;
+
+    const platformFeeAmt = args.amount * (platformFeePercent / 100);
+    const processingFeeAmt = args.amount * (processingFeePercent / 100) + processingFeeFlat;
+    const totalFees = platformFeeAmt + processingFeeAmt;
+    const netAmount = args.amount - totalFees;
+
+    await ctx.db.insert("fees", {
+      transactionId,
+      feeType: "platform_fee",
+      amount: platformFeeAmt,
+      currency: "USD",
+      rateUsed: platformFeePercent / 100,
+      createdAt: now,
+    });
+    await ctx.db.insert("fees", {
+      transactionId,
+      feeType: "processor_fee",
+      amount: processingFeeAmt,
+      currency: "USD",
+      rateUsed: processingFeePercent / 100,
+      flatAmount: processingFeeFlat,
+      createdAt: now,
+    });
+
+    // --- Double-entry: write allocation row ---
+    const escrowReleaseAt = args.escrowDays && args.escrowDays > 0
+      ? new Date(Date.now() + args.escrowDays * 86_400_000).toISOString()
+      : undefined;
+
+    await ctx.db.insert("allocations", {
+      transactionId,
+      campaignId: args.campaignId,
+      userId: args.userId,
+      grossAmount: args.amount,
+      totalFees,
+      netAmount,
+      currency: args.currency ?? "USD",
+      nativeCurrency: args.nativeCurrency,
+      nativeAmount: args.nativeAmount,
+      fxRate: args.fxRate,
+      escrowReleaseAt,
+      status: "allocated",
+      createdAt: now,
+    });
+
+    // Update or create holding account (net amount credited)
     let account = await ctx.db.query("holdingAccounts")
       .filter((q) => q.eq("userId", args.userId))
       .first();
 
     if (account) {
       await ctx.db.patch(account._id, {
-        totalBalance: account.totalBalance + args.amount,
-        lastUpdated: new Date().toISOString(),
+        totalBalance: account.totalBalance + netAmount,
+        totalFeesDeducted: account.totalFeesDeducted + totalFees,
+        lastUpdated: now,
       });
     } else {
       await ctx.db.insert("holdingAccounts", {
         userId: args.userId,
-        totalBalance: args.amount,
-        totalFeesDeducted: 0,
+        totalBalance: netAmount,
+        totalFeesDeducted: totalFees,
         totalPaidOut: 0,
         pendingPayouts: 0,
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: now,
       });
     }
 
-    return { status: "success", transactionId, depositedAmount: args.amount };
+    return { status: "success", transactionId, depositedAmount: args.amount, netAmount, totalFees };
   },
 });
 
@@ -240,22 +300,44 @@ export const requestPayout = mutation({
       requestedDate: new Date().toISOString(),
     });
 
+    const now = new Date().toISOString();
+
     // Update holding account
     await ctx.db.patch(account._id, {
       pendingPayouts: account.pendingPayouts + gross,
       totalFeesDeducted: account.totalFeesDeducted + totalFees,
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: now,
     });
 
     // Create transaction record
-    await ctx.db.insert("transactions", {
+    const payoutTxId = await ctx.db.insert("transactions", {
       userId: args.userId,
       type: "payout",
       amount: net,
       payoutRequestId: payoutId,
       status: "pending",
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     });
+
+    // --- Double-entry: write payout fee line item ---
+    await ctx.db.insert("fees", {
+      transactionId: payoutTxId,
+      feeType: "platform_fee",
+      amount: totalFees,
+      currency: "USD",
+      rateUsed: platformFeePercent / 100,
+      flatAmount: processingFeeFlat,
+      createdAt: now,
+    });
+
+    // --- Double-entry: mark related allocations as payout_pending ---
+    const openAllocations = await ctx.db
+      .query("allocations")
+      .withIndex("byUserId", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const alloc of openAllocations.filter((a) => a.status === "allocated")) {
+      await ctx.db.patch(alloc._id, { status: "payout_pending" });
+    }
 
     return {
       status: "success",
@@ -317,6 +399,15 @@ export const completePayout = mutation({
       });
     }
 
+    // --- Double-entry: mark allocations as paid_out ---
+    const pendingAllocations = await ctx.db
+      .query("allocations")
+      .withIndex("byUserId", (q) => q.eq("userId", payout.userId))
+      .collect();
+    for (const alloc of pendingAllocations.filter((a) => a.status === "payout_pending")) {
+      await ctx.db.patch(alloc._id, { status: "paid_out" });
+    }
+
     return { status: "success", payoutId: args.payoutId, netPaid: payout.netAmount };
   },
 });
@@ -349,3 +440,134 @@ export const updateFeeConfig = mutation({
     return { status: "success", configId };
   },
 });
+
+// Query: Get net available balance (pending vs available) for a user
+export const getBalanceSummary = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const account = await ctx.db.query("holdingAccounts")
+      .withIndex("byUserId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!account) {
+      return {
+        totalBalance: 0,
+        pendingBalance: 0,
+        availableForPayout: 0,
+        totalFeesDeducted: 0,
+        totalPaidOut: 0,
+      };
+    }
+
+    // Pending balance = funds in allocations that are still in escrow
+    const now = new Date().toISOString();
+    const escrowedAllocations = await ctx.db
+      .query("allocations")
+      .withIndex("byUserId", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const pendingBalance = escrowedAllocations
+      .filter((a) => a.status === "allocated" && a.escrowReleaseAt && a.escrowReleaseAt > now)
+      .reduce((sum, a) => sum + a.netAmount, 0);
+
+    const availableForPayout = Math.max(0, account.totalBalance - account.pendingPayouts - pendingBalance);
+
+    return {
+      totalBalance: account.totalBalance,
+      pendingBalance,
+      availableForPayout,
+      totalFeesDeducted: account.totalFeesDeducted,
+      totalPaidOut: account.totalPaidOut,
+    };
+  },
+});
+
+// Mutation: Record a chargeback or refund (admin-gated; writes negative ledger entry)
+export const recordChargeback = mutation({
+  args: {
+    userId: v.string(),
+    amount: v.number(),               // positive number; will be stored as negative debit
+    sourcePlatform: v.string(),
+    campaignId: v.optional(v.string()),
+    reason: v.string(),
+    adminPin: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireSuperAdmin(ctx, args.adminPin);
+    checkRateLimit("chargeback", 10, 300000);
+
+    if (args.amount <= 0) {
+      throw new Error("Chargeback amount must be positive (will be applied as a debit).");
+    }
+
+    const account = await ctx.db.query("holdingAccounts")
+      .withIndex("byUserId", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!account) {
+      throw new Error("No holding account found for user.");
+    }
+
+    const now = new Date().toISOString();
+    const debitAmount = -Math.abs(args.amount);
+
+    // Write negative transaction for audit trail
+    const transactionId = await ctx.db.insert("transactions", {
+      userId: args.userId,
+      type: "chargeback",
+      amount: debitAmount,
+      sourcePlatform: args.sourcePlatform,
+      campaignId: args.campaignId,
+      status: "completed",
+      currency: "USD",
+      createdAt: now,
+    });
+
+    // Write negative fee row (chargeback is treated as a fee reversal of the platform)
+    await ctx.db.insert("fees", {
+      transactionId,
+      feeType: "chargeback",
+      amount: debitAmount,
+      currency: "USD",
+      createdAt: now,
+    });
+
+    // Write reversed allocation row
+    await ctx.db.insert("allocations", {
+      transactionId,
+      campaignId: args.campaignId,
+      userId: args.userId,
+      grossAmount: debitAmount,
+      totalFees: 0,
+      netAmount: debitAmount,
+      currency: "USD",
+      status: "reversed",
+      createdAt: now,
+    });
+
+    // Debit holding account
+    const newBalance = account.totalBalance + debitAmount; // debitAmount is negative
+    await ctx.db.patch(account._id, {
+      totalBalance: Math.max(0, newBalance),
+      lastUpdated: now,
+    });
+
+    return {
+      status: "success",
+      transactionId,
+      debitApplied: debitAmount,
+      reason: args.reason,
+      newBalance: Math.max(0, newBalance),
+    };
+  },
+});
+
+// Internal helper: enforce super admin PIN
+async function requireSuperAdmin(ctx: any, pin: string) {
+  const adminUser = await ctx.db.query("adminUsers")
+    .withIndex("byPin", (q: any) => q.eq("pin", pin))
+    .first();
+  if (!adminUser || adminUser.role !== "super_admin" || !adminUser.active) {
+    throw new Error("Super admin authorization required.");
+  }
+}
