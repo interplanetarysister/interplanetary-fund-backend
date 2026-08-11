@@ -123,19 +123,41 @@ export const recordInboundDonation = internalMutation({
     });
 
     // Write allocation row
+    const holdingUserId = campaign?.ifCampaignId ?? args.campaignId;
     await ctx.db.insert("allocations", {
       transactionId,
       campaignId: args.campaignId,
-      userId: campaign?.ifCampaignId ?? args.campaignId,
+      userId: holdingUserId,
       grossAmount: args.grossAmount,
       totalFees,
       netAmount,
-      currency: "USD",
-      nativeCurrency: args.currency !== "USD" ? args.currency : undefined,
-      nativeAmount: args.currency !== "USD" ? args.grossAmount : undefined,
+      currency: args.currency,
       status: "allocated",
       createdAt: now,
     });
+
+    // Update or create holding account (net amount credited)
+    const existingAccount = await ctx.db
+      .query("holdingAccounts")
+      .withIndex("byUserId", (q) => q.eq("userId", holdingUserId))
+      .first();
+
+    if (existingAccount) {
+      await ctx.db.patch(existingAccount._id, {
+        totalBalance: existingAccount.totalBalance + netAmount,
+        totalFeesDeducted: existingAccount.totalFeesDeducted + totalFees,
+        lastUpdated: now,
+      });
+    } else {
+      await ctx.db.insert("holdingAccounts", {
+        userId: holdingUserId,
+        totalBalance: netAmount,
+        totalFeesDeducted: totalFees,
+        totalPaidOut: 0,
+        pendingPayouts: 0,
+        lastUpdated: now,
+      });
+    }
 
     // Update campaign raised amount
     if (campaign) {
