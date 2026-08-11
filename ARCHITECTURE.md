@@ -3,80 +3,57 @@
 ## System Diagram
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    GitHub Repository                     │
-│              interplanetarysister/                        │
-│           interplanetary-fund-backend                     │
-│                                                          │
-│  ┌─────────┐  ┌──────────┐  ┌────────────────────────┐   │
-│  │ Convex  │  │ React    │  │ Capacitor (Mobile)     │   │
-│  │ Backend │  │ Frontend │  │ android/ ios/          │   │
-│  │ convex/ │  │ src/     │  │                        │   │
-│  └────┬───┘  └────┬─────┘  └───────────┬────────────┘   │
-│       │           │                     │                │
-│       └───────────┴─────────────────────┘                │
-│                   │                                      │
-│          Copilot Instructions                           │
-│          .github/copilot-instructions.md                 │
-└──────────────────┬──────────────────────────────────────┘
-                   │
-         ┌─────────┴─────────┐
-         ▼                   ▼
-┌──────────────┐    ┌───────────────┐
-│   Vercel     │    │   Base44      │
-│  (Web Host)  │    │  (APK Build)  │
-│              │    │               │
-│ Auto-deploy  │    │ Syncs from    │
-│ from GitHub  │    │ Convex API    │
-│              │    │               │
-│ VITE_CONVEX  │    │ Backend fn    │
-│ _URL env var │    │ syncs data    │
-└──────┬───────┘    └──────┬───────┘
-       │                   │
-       └────────┬──────────┘
-                ▼
-┌──────────────────────────┐
-│     Convex Cloud          │
-│  rosy-butterfly-2         │
-│  .convex.cloud            │
-│                          │
-│  8 Tables:               │
-│  - agents (7)            │
-│  - monitoredCampaigns(4) │
-│  - protocolReports       │
-│  - externalPlatforms     │
-│  - holdingAccounts       │
-│  - payoutRequests        │
-│  - transactions          │
-│  - feeConfig             │
-│                          │
-│  Crons:                  │
-│  - Daily 6am audit       │
-│  - Weekly Sat 2am train  │
-└──────────────────────────┘
+GitHub Repository: interplanetarysister/interplanetary-fund-backend
+  |
+  +-- convex/        (Convex backend functions)
+  +-- src/           (React frontend)
+  +-- android/       (Capacitor Android native project)
+  +-- capacitor.config.ts
+  +-- vite.config.ts
+  +-- vercel.json
+
+
+                      GitHub Push
+                          |
+           +--------------+--------------+
+           |                             |
+           v                             v
+    Vercel (Web)               Capacitor (Android)
+    npm run build              npm run build
+    dist/ served at /          npx cap sync android
+           |                   cd android && gradlew assembleDebug
+           |                             |
+           v                             v
+     Convex Cloud  <----------  Convex Cloud
+  rosy-butterfly-2.convex.cloud
+  (WebSocket + REST API)
 ```
 
 ## Data Flow
 
 ### Web App (Vercel)
-1. User opens `https://interplanetary-fund.vercel.app`
-2. Vercel serves the React SPA from `dist/`
-3. React app connects to Convex via WebSocket
-4. Real-time data sync (agents, campaigns, treasury)
-5. Mutations update Convex → triggers UI update
+1. Push to GitHub triggers Vercel auto-deploy
+2. Vercel runs `npm run build` (Vite, `base: "/"`)
+3. Vercel serves the React SPA from `dist/`
+4. React app connects to Convex via WebSocket using `VITE_CONVEX_URL`
+5. Real-time data sync (agents, campaigns, treasury)
+6. Mutations update Convex -> triggers UI update
 
-### Mobile App (APK from Base44)
-1. User opens the Interplanetary Fund APK
-2. Base44 app frontend loads
-3. Base44 backend function calls Convex REST API
-4. Data syncs: Convex → Base44 entities → APK UI
-5. APK displays live campaign, agent, and treasury data
+### Mobile App (Capacitor Android)
+1. Developer runs `npm run build` -> produces `dist/`
+2. `npx cap sync android` -> copies `dist/` into `android/app/src/main/assets/public/`
+3. `cd android && ./gradlew assembleDebug` -> produces APK
+4. APK loads the bundled web app (WebView)
+5. App connects to Convex using `VITE_CONVEX_URL` bundled at build time
+6. Capacitor provides native Android chrome (splash screen, status bar)
 
 ### GitHub Copilot
 1. `.github/copilot-instructions.md` provides context
 2. Copilot understands the full architecture
 3. Can suggest changes to Convex functions, React components, or mobile config
-4. Changes are committed and pushed → auto-deploy to Vercel
+4. Changes are committed and pushed -> auto-deploy to Vercel
+
+---
 
 ## Protocol Enforcement (P-1 through P-8)
 
@@ -93,8 +70,8 @@
 
 ## Agent Architecture
 
-All 7 agents are stored as Convex records (not Base44 entities). This ensures:
-- Zero Base44 credit consumption for agent operations
+All 7 agents are stored as Convex records. This ensures:
+- Zero external credit consumption for agent operations
 - Full data portability
 - Real-time WebSocket sync
 - Cron-based automated training
@@ -112,7 +89,13 @@ All 7 agents are stored as Convex records (not Base44 entities). This ensures:
 ## Security Model
 
 - Convex: Row-level security via auth tokens (future)
-- Base44: Row-level security on sync entities
 - GitHub: Private repo with OAuth token access
 - Vercel: Environment variable isolation
 - No secrets in code — all in environment variables
+
+## Migration History
+
+The platform was originally prototyped using Base44 as a rapid app builder. Data and
+logic have since been migrated to the Convex backend and React/Capacitor stack.
+Historical Base44 reference files are preserved in `base44-functions/` and
+`base44-sync/` for migration context; they are not part of the active build.

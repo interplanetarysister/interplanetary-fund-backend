@@ -49,5 +49,9 @@
     "mobile"
   ],
   "license": "UNLICENSED",
-  "author": "Michelle Rogers"
+  "author": "Michelle Rogers",
+  "allowScripts": {
+    "esbuild@0.27.0": true,
+    "esbuild@0.21.5": true
+  }
 }

@@ -10,3 +10,7 @@ dist/
 .env.convex
 .env.production
 .netlify/
+android/app/build/
+android/.gradle/
+android/build/
+.gradle/
