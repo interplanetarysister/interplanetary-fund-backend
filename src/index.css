@@ -259,6 +259,7 @@ body {
 .badge-red { @apply bg-ifred/20 text-ifred; }
 .badge-amber { @apply bg-ifamber/20 text-ifamber; }
 .badge-cyan { @apply bg-ifcyan/20 text-ifcyan; }
+.badge-purple { @apply bg-ifaccent/20 text-ifaccent; }
 
 .btn-primary {
   @apply w-full text-ifwhite font-semibold rounded-xl py-3 px-4 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed;

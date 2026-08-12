@@ -92,6 +92,14 @@ export default defineSchema({
       issue: v.string(),
       severity: v.string(),
     })),
+    trainingItinerary: v.optional(v.array(v.string())),
+    learningQuestions: v.optional(v.array(v.string())),
+    platformInsights: v.optional(v.array(v.object({
+      platform: v.string(),
+      externalRaised: v.number(),
+      donorCount: v.number(),
+      connectedCampaigns: v.number(),
+    }))),
     results: v.array(v.object({
       title: v.string(),
       complianceScore: v.number(),
