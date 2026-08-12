@@ -142,7 +142,7 @@ export default function App() {
       )}
 
       {/* Content */}
-      <main className={`max-w-md mx-auto px-4 py-4 pb-20 min-h-screen flex-1 ${view === "globe" ? "p-0 max-w-none" : ""}`}>
+      <main className={`max-w-md mx-auto px-4 py-4 pb-20 flex-1 ${view === "globe" ? "p-0 max-w-none" : ""}`}>
         <Suspense fallback={<PageLoader />}>
           {view === "explore" && <Explore />}
           {view === "globe" && <GlobePage />}
