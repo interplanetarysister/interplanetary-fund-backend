@@ -108,7 +108,7 @@ export const recordInboundDonation = internalMutation({
       transactionId,
       feeType: "platform_fee",
       amount: platformFeeAmt,
-      currency: "USD",
+      currency: args.currency,
       rateUsed: platformFeePercent / 100,
       createdAt: now,
     });
@@ -116,7 +116,7 @@ export const recordInboundDonation = internalMutation({
       transactionId,
       feeType: "processor_fee",
       amount: processingFeeAmt,
-      currency: "USD",
+      currency: args.currency,
       rateUsed: processingFeePercent / 100,
       flatAmount: processingFeeFlat,
       createdAt: now,
@@ -263,7 +263,11 @@ export const kofiWebhook = httpAction(async (ctx, request) => {
     }
 
     const token = process.env.KOFI_WEBHOOK_TOKEN;
-    if (token && payload["verification_token"] !== token) {
+    if (!token) {
+      console.warn("[webhooks/kofi] KOFI_WEBHOOK_TOKEN not configured — event discarded");
+      return new Response("OK", { status: 200 });
+    }
+    if (payload["verification_token"] !== token) {
       console.warn("[webhooks/kofi] Invalid token — event discarded");
       return new Response("OK", { status: 200 });
     }
@@ -308,8 +312,12 @@ export const bmacWebhook = httpAction(async (ctx, request) => {
     }
 
     const secret = process.env.BMAC_WEBHOOK_SECRET;
+    if (!secret) {
+      console.warn("[webhooks/bmac] BMAC_WEBHOOK_SECRET not configured — event discarded");
+      return new Response("OK", { status: 200 });
+    }
     const data: Record<string, any> = payload["data"] ?? payload;
-    if (secret && data["verification_token"] !== secret) {
+    if (data["verification_token"] !== secret) {
       console.warn("[webhooks/bmac] Invalid token — event discarded");
       return new Response("OK", { status: 200 });
     }

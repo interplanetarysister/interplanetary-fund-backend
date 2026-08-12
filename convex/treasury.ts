@@ -174,6 +174,7 @@ export const createDeposit = mutation({
   },
   handler: async (ctx, args) => {
     const now = new Date().toISOString();
+    const currency = args.currency ?? "USD";
     const transactionId = await ctx.db.insert("transactions", {
       userId: args.userId,
       type: "deposit",
@@ -181,7 +182,7 @@ export const createDeposit = mutation({
       sourcePlatform: args.sourcePlatform,
       campaignId: args.campaignId,
       status: "completed",
-      currency: args.currency ?? "USD",
+      currency,
       createdAt: now,
     });
 
@@ -200,7 +201,7 @@ export const createDeposit = mutation({
       transactionId,
       feeType: "platform_fee",
       amount: platformFeeAmt,
-      currency: "USD",
+      currency,
       rateUsed: platformFeePercent / 100,
       createdAt: now,
     });
@@ -208,7 +209,7 @@ export const createDeposit = mutation({
       transactionId,
       feeType: "processor_fee",
       amount: processingFeeAmt,
-      currency: "USD",
+      currency,
       rateUsed: processingFeePercent / 100,
       flatAmount: processingFeeFlat,
       createdAt: now,
@@ -226,7 +227,7 @@ export const createDeposit = mutation({
       grossAmount: args.amount,
       totalFees,
       netAmount,
-      currency: args.currency ?? "USD",
+      currency,
       nativeCurrency: args.nativeCurrency,
       nativeAmount: args.nativeAmount,
       fxRate: args.fxRate,
@@ -331,13 +332,21 @@ export const requestPayout = mutation({
       createdAt: now,
     });
 
-    // --- Double-entry: write payout fee line item ---
+    // --- Double-entry: write payout fee line items ---
     await ctx.db.insert("fees", {
       transactionId: payoutTxId,
       feeType: "platform_fee",
-      amount: totalFees,
+      amount: platformFee,
       currency: "USD",
       rateUsed: platformFeePercent / 100,
+      createdAt: now,
+    });
+    await ctx.db.insert("fees", {
+      transactionId: payoutTxId,
+      feeType: "processor_fee",
+      amount: processingFee,
+      currency: "USD",
+      rateUsed: processingFeePercent / 100,
       flatAmount: processingFeeFlat,
       createdAt: now,
     });
