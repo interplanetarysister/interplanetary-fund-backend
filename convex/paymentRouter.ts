@@ -27,6 +27,12 @@ type PaymentConfig = {
   blockchainApiBaseUrl: string;
 };
 
+type ActiveFeeConfig = {
+  platformFeePercent: number;
+  processingFeePercent: number;
+  processingFeeFlat: number;
+};
+
 function getNumberEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -184,7 +190,39 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
     paymentReference: donation.paymentReference,
   });
 
+  const feeConfig = await getActiveFeeConfig(ctx);
+  const platformFee = donation.amount * (feeConfig.platformFeePercent / 100);
+  const processingFee = donation.amount * (feeConfig.processingFeePercent / 100) + feeConfig.processingFeeFlat;
+  const totalFees = platformFee + processingFee;
+  const netAmount = Math.max(0, donation.amount - totalFees);
+
+  await ctx.db.insert("payoutRequests", {
+    userId: donation.campaignId,
+    amountRequested: donation.amount,
+    feeAmount: totalFees,
+    netAmount,
+    payoutMethod: "pending",
+    payoutDestination: "pending",
+    status: "pending_user_selection",
+    requestedDate: now,
+    adminReviewStatus: "auto_queued",
+    adminReviewNote: `Auto-queued from ${donation.provider || "if_checkout"}; gross=$${donation.amount.toFixed(2)} net=$${netAmount.toFixed(2)} fees=$${totalFees.toFixed(2)}`,
+  });
+
   return { status: "confirmed" };
+}
+
+async function getActiveFeeConfig(ctx: any): Promise<ActiveFeeConfig> {
+  const feeConfig = await ctx.db
+    .query("feeConfig")
+    .filter((q: any) => q.eq("active", true))
+    .first();
+
+  return {
+    platformFeePercent: feeConfig?.platformFeePercent ?? 5,
+    processingFeePercent: feeConfig?.processingFeePercent ?? 2.9,
+    processingFeeFlat: feeConfig?.processingFeeFlat ?? 0,
+  };
 }
 
 export const getAvailablePaymentMethods = query({

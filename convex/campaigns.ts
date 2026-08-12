@@ -200,23 +200,25 @@ export const getAllExternalBalances = query({
   args: {},
   handler: async (ctx) => {
     const platforms = await ctx.db.query("externalPlatforms").collect();
-    const byPlatform: Record<string, { count: number; totalRaised: number; totalDonors: number; campaigns: any[] }> = {};
+    const byPlatform: Record<string, { count: number; totalRaised: number; totalDonors: number; totalClicks: number; campaigns: any[] }> = {};
     for (const p of platforms) {
       const name = p.platform || "unknown";
-      if (!byPlatform[name]) byPlatform[name] = { count: 0, totalRaised: 0, totalDonors: 0, campaigns: [] };
+      if (!byPlatform[name]) byPlatform[name] = { count: 0, totalRaised: 0, totalDonors: 0, totalClicks: 0, campaigns: [] };
       byPlatform[name].count++;
-      byPlatform[name].totalRaised += p.externalTotal || 0;
-      byPlatform[name].totalDonors += p.externalDonorCount || 0;
+      byPlatform[name].totalRaised += 0;
+      byPlatform[name].totalDonors += 0;
+      byPlatform[name].totalClicks += p.linkClicks || 0;
       byPlatform[name].campaigns.push({
         title: p.displayName || "Unknown", url: p.externalUrl || "",
-        raised: p.externalTotal || 0, donors: p.externalDonorCount || 0,
+        raised: 0, donors: 0, clicks: p.linkClicks || 0,
         lastSynced: p.lastSynced || "", status: p.status || "unknown",
       });
     }
     return {
       total: platforms.length, byPlatform,
-      grandTotalRaised: platforms.reduce((s, p) => s + (p.externalTotal || 0), 0),
-      grandTotalDonors: platforms.reduce((s, p) => s + (p.externalDonorCount || 0), 0),
+      grandTotalRaised: 0,
+      grandTotalDonors: 0,
+      grandTotalClicks: platforms.reduce((s, p) => s + (p.linkClicks || 0), 0),
     };
   },
 });
