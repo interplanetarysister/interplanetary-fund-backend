@@ -77,16 +77,24 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
   const TABS = ALL_TABS.filter(t => hasPermission(TAB_PERMISSIONS[t.id]));
   const [tab, setTab] = useState<AdminTab>("overview");
 
-  // Shared queries
+  // Shared queries — use "skip" to avoid fetching data for inactive tabs
   const balances = useQuery(api.treasury.aggregateBalances, {});
-  const agentsStats = useQuery(api.agents.getAgentStats, {});
-  const agentsList = useQuery(api.agents.getAgents, {});
-  const campaigns = useQuery(api.campaigns.getCampaigns, {});
-  const latestReport = useQuery(api.protocol.getLatestReport, {});
-  const reports = useQuery(api.protocol.getReports, { limit: 10 });
-  const audit = useQuery(api.protocol.enforceProtocol, {});
-  const externalBalances = useQuery(api.campaigns.getAllExternalBalances, {});
-  const interactionStats = useQuery(api.interactions.getAllInteractionStats, {});
+  const agentsStats = useQuery(api.agents.getAgentStats,
+    tab === "overview" || tab === "agents" ? {} : "skip");
+  const agentsList = useQuery(api.agents.getAgents,
+    tab === "agents" ? {} : "skip");
+  const campaigns = useQuery(api.campaigns.getCampaigns,
+    tab === "campaigns" || tab === "overview" ? {} : "skip");
+  const latestReport = useQuery(api.protocol.getLatestReport,
+    tab === "overview" || tab === "reports" ? {} : "skip");
+  const reports = useQuery(api.protocol.getReports,
+    tab === "reports" ? { limit: 10 } : "skip");
+  const audit = useQuery(api.protocol.enforceProtocol,
+    tab === "reports" ? {} : "skip");
+  const externalBalances = useQuery(api.campaigns.getAllExternalBalances,
+    tab === "platforms" || tab === "treasury" ? {} : "skip");
+  const interactionStats = useQuery(api.interactions.getAllInteractionStats,
+    tab === "interactions" ? {} : "skip");
 
   // Treasury form state
   const [payoutAmount, setPayoutAmount] = useState("");
@@ -119,7 +127,7 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
     amount: parseFloat(payoutAmount) || 0,
   });
 
-  if (!balances || !agentsStats) {
+  if (!balances) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="w-8 h-8 border-2 border-ifaccent border-t-transparent rounded-full animate-spin" />
