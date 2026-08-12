@@ -98,4 +98,13 @@ crons.daily(
   {}
 );
 
+// Hourly Platform Poll — :30 every hour UTC
+// Checks manual_only platforms for stale data; polls API-enabled platforms for delta changes
+crons.hourly(
+  "hourly-platform-poll",
+  { minuteUTC: 30 },
+  internal.platformPoller.pollAllPlatforms,
+  {}
+);
+
 export default crons;
