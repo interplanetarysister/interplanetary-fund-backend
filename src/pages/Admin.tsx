@@ -5,7 +5,7 @@
  */
 
 import { useState } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, usePaginatedQuery } from "convex/react";
 import type { AdminUser } from "../types";
 import PermissionsManager from "../components/PermissionsManager";
 import FraudControl from "../components/FraudControl";
@@ -83,8 +83,11 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
     tab === "overview" || tab === "agents" ? {} : "skip");
   const agentsList = useQuery(api.agents.getAgents,
     tab === "agents" ? {} : "skip");
-  const campaigns = useQuery(api.campaigns.getCampaigns,
-    tab === "campaigns" || tab === "overview" ? {} : "skip");
+  const { results: campaigns } = usePaginatedQuery(
+    api.campaigns.getCampaigns,
+    tab === "campaigns" || tab === "overview" ? {} : "skip",
+    { initialNumItems: 50 },
+  );
   const latestReport = useQuery(api.protocol.getLatestReport,
     tab === "overview" || tab === "reports" ? {} : "skip");
   const reports = useQuery(api.protocol.getReports,

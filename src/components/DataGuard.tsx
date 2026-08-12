@@ -30,6 +30,11 @@ export function DataGuard<T>({
   errorMessage,
   children,
 }: DataGuardProps<T>) {
+  // Show children whenever data is available — don't hide existing data during refetch
+  if (data !== undefined && data !== null) {
+    return <>{children(data)}</>;
+  }
+
   if (data === undefined || isLoading) {
     return (
       <div className="flex items-center justify-center py-12">

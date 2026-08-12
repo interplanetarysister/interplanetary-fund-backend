@@ -4,7 +4,7 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 
 export type FeedbackState = "idle" | "loading" | "success" | "error";
 
@@ -26,9 +26,11 @@ export interface ActionFeedback {
 export function useActionFeedback(defaultSuccessMsg = "Done!"): ActionFeedback {
   const [state, setState] = useState<FeedbackState>("idle");
   const [message, setMessage] = useState("");
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const run = useCallback(
     async <T>(action: () => Promise<T>, successMsg?: string): Promise<T | undefined> => {
+      if (timerRef.current) clearTimeout(timerRef.current);
       setState("loading");
       setMessage("");
       try {
@@ -36,7 +38,7 @@ export function useActionFeedback(defaultSuccessMsg = "Done!"): ActionFeedback {
         setState("success");
         setMessage(successMsg ?? defaultSuccessMsg);
         // Auto-reset after 3 s so the UI doesn't stay in "success" forever
-        setTimeout(() => setState("idle"), 3000);
+        timerRef.current = setTimeout(() => setState("idle"), 3000);
         return result;
       } catch (err: unknown) {
         setState("error");
@@ -48,6 +50,7 @@ export function useActionFeedback(defaultSuccessMsg = "Done!"): ActionFeedback {
   );
 
   const reset = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     setState("idle");
     setMessage("");
   }, []);
