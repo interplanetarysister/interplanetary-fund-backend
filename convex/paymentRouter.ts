@@ -12,6 +12,7 @@ const USD_CURRENCY = "USD";
 const BTC_CURRENCY = "BTC";
 const SATOSHIS_PER_BTC = 100_000_000;
 const ONE_SATOSHI_BTC = 1 / SATOSHIS_PER_BTC;
+const DEFAULT_PAYPAL_BUSINESS_EMAIL = "interplanetarysister@gmail.com";
 
 type PaymentMethod = "paypal" | "cashapp" | "bitcoin";
 
@@ -36,7 +37,7 @@ function getNumberEnv(name: string, fallback: number): number {
 
 function getPaymentConfig(): PaymentConfig {
   return {
-    paypalBusinessEmail: process.env.PAYPAL_BUSINESS_EMAIL,
+    paypalBusinessEmail: process.env.PAYPAL_BUSINESS_EMAIL || DEFAULT_PAYPAL_BUSINESS_EMAIL,
     cashappCashtag: process.env.CASHAPP_CASHTAG,
     bitcoinAddress: process.env.BITCOIN_DONATION_ADDRESS,
     bitcoinRequiredConfirmations: getNumberEnv("BITCOIN_REQUIRED_CONFIRMATIONS", 3),
