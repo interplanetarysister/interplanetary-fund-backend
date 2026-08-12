@@ -76,6 +76,7 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
   // Filter tabs based on permissions
   const TABS = ALL_TABS.filter(t => hasPermission(TAB_PERMISSIONS[t.id]));
   const [tab, setTab] = useState<AdminTab>("overview");
+  const [selectedMigrationCampaignId, setSelectedMigrationCampaignId] = useState<string | undefined>(undefined);
 
   // Shared queries
   const balances = useQuery(api.treasury.aggregateBalances, {});
@@ -365,6 +366,15 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
                     <span className="badge badge-cyan">{c.category}</span>
                   )}
                 </div>
+                <button
+                  onClick={() => {
+                    setSelectedMigrationCampaignId(c.ifCampaignId);
+                    setTab("migration");
+                  }}
+                  className="btn-secondary w-full"
+                >
+                  Migrate Funds
+                </button>
               </div>
             );
           })}
@@ -776,7 +786,7 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
       )}
 
       {/* ============ FUND MIGRATION ============ */}
-      {tab === "migration" && <FundMigrationDashboard />}
+      {tab === "migration" && <FundMigrationDashboard initialCampaignId={selectedMigrationCampaignId} />}
 
       {/* ============ PLATFORMS ============ */}
       {tab === "platforms" && (
