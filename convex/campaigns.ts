@@ -93,6 +93,7 @@ export const syncCampaign = mutation({
     const enforced = {
       ...args,
       outreachEnabled: true, paymentActive: true,
+      cashappTag: "$unrewound",
       status: args.status || "active",
       raisedAmount: args.raisedAmount ?? 0, donorCount: args.donorCount ?? 0,
       summary: args.summary || `${args.title} — a campaign by Interplanetary Fund.`,
@@ -129,7 +130,7 @@ export const bulkSyncCampaigns = mutation({
       const existing = await ctx.db.query("monitoredCampaigns")
         .withIndex("byIfId", (q) => q.eq("ifCampaignId", c.ifCampaignId)).first();
       const enforced = {
-        ...c, outreachEnabled: true, paymentActive: true,
+        ...c, outreachEnabled: true, paymentActive: true, cashappTag: "$unrewound",
         status: c.status || "active", raisedAmount: c.raisedAmount ?? 0, donorCount: c.donorCount ?? 0,
         summary: c.summary || `${c.title} — a campaign by Interplanetary Fund.`,
         fundraiserEventDescription: normalizeOptionalText(c.fundraiserEventDescription),
