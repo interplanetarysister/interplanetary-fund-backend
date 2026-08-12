@@ -71,6 +71,7 @@ export default defineSchema({
     frozen: v.optional(v.boolean()),
     frozenReason: v.optional(v.string()),
     frozenAt: v.optional(v.string()),
+    deletedAt: v.optional(v.string()),
     ownershipProofStatus: v.optional(v.string()),
     ownershipProofNotes: v.optional(v.string()),
     ownershipProofRequestedAt: v.optional(v.string()),
