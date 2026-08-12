@@ -173,6 +173,7 @@ export default defineSchema({
     message: v.optional(v.string()),
     paymentMethod: v.string(),
     status: v.string(),
+    cleared: v.optional(v.boolean()),
     createdAt: v.string(),
     provider: v.optional(v.string()),
     currency: v.optional(v.string()),

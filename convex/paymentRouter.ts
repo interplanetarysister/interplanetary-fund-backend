@@ -150,6 +150,7 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
   const now = new Date().toISOString();
   await ctx.db.patch(donation._id, {
     status: "confirmed",
+    cleared: true,
     confirmedAt: now,
     providerTransactionId: providerTransactionId || donation.providerTransactionId,
     updatedAt: now,
@@ -333,6 +334,104 @@ export const createDonationIntent = mutation({
       checkout,
       bitcoin,
       idempotentReplay: false,
+    };
+  },
+});
+
+export const recordPayPalPaymentSuccess = mutation({
+  args: {
+    campaignId: v.string(),
+    amount: v.number(),
+    donorName: v.optional(v.string()),
+    campaignTitle: v.optional(v.string()),
+    providerTransactionId: v.string(),
+    paymentReference: v.optional(v.string()),
+    paymentMethod: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    checkRateLimit("confirm_external_donation", 20, 60000);
+
+    if (!validateDonation(args.amount)) {
+      throw new Error("Invalid donation amount. Must be between $0.01 and $100,000.");
+    }
+
+    const providerTransactionId = args.providerTransactionId.trim();
+    if (!providerTransactionId) {
+      throw new Error("PayPal transaction ID is required.");
+    }
+
+    if (args.paymentMethod && args.paymentMethod.trim().toLowerCase() !== "paypal") {
+      throw new Error("paymentMethod must be 'paypal' for this callback.");
+    }
+
+    const duplicate = await ctx.db
+      .query("donations")
+      .withIndex("byProviderTransactionId", (q: any) => q.eq("providerTransactionId", providerTransactionId))
+      .first();
+
+    if (duplicate) {
+      return {
+        status: duplicate.confirmedAt ? "already_confirmed" : "already_recorded",
+        donationId: duplicate._id,
+        alreadyProcessed: true,
+      };
+    }
+
+    const campaign = await ctx.db
+      .query("monitoredCampaigns")
+      .withIndex("byIfId", (q: any) => q.eq("ifCampaignId", args.campaignId))
+      .first();
+
+    if (!campaign) {
+      throw new Error("Campaign not found for PayPal callback.");
+    }
+
+    const now = new Date().toISOString();
+    const paymentReference = args.paymentReference?.trim() || createPaymentReference();
+    const donationId = await ctx.db.insert("donations", {
+      campaignId: args.campaignId,
+      campaignTitle: args.campaignTitle || campaign.title,
+      amount: args.amount,
+      donorName: args.donorName?.trim() || "Anonymous",
+      message: "",
+      paymentMethod: "paypal",
+      provider: "paypal",
+      currency: USD_CURRENCY,
+      status: "confirmed",
+      cleared: true,
+      createdAt: now,
+      updatedAt: now,
+      confirmedAt: now,
+      providerTransactionId,
+      paymentReference,
+    });
+
+    await ctx.db.patch(campaign._id, {
+      raisedAmount: (campaign.raisedAmount || 0) + args.amount,
+      donorCount: (campaign.donorCount || 0) + 1,
+      lastSynced: now,
+    });
+
+    await ctx.db.insert("transactions", {
+      userId: args.campaignId,
+      type: "donation_received",
+      amount: args.amount,
+      sourcePlatform: "paypal",
+      campaignId: args.campaignId,
+      status: "confirmed",
+      createdAt: now,
+      paymentMethod: "paypal",
+      paymentProvider: "paypal",
+      currency: USD_CURRENCY,
+      providerTransactionId,
+      donationId,
+      paymentReference,
+    });
+
+    return {
+      status: "confirmed",
+      donationId,
+      alreadyProcessed: false,
     };
   },
 });

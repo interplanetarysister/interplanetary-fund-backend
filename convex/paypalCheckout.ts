@@ -80,11 +80,12 @@ export const confirmDonation = mutation({
       if (donation.providerTransactionId && donation.providerTransactionId !== paypalTransactionId) {
         throw new Error("Donation already confirmed with a different PayPal transaction ID.");
       }
-      const patch: Record<string, string> = {};
+      const patch: Record<string, string | boolean> = {};
       if (!donation.providerTransactionId) {
         patch.providerTransactionId = paypalTransactionId;
       }
       if (!donation.confirmedAt) patch.confirmedAt = now;
+      if (!donation.cleared) patch.cleared = true;
       if (Object.keys(patch).length > 0) {
         patch.updatedAt = now;
         await ctx.db.patch(args.donationId, patch);
@@ -95,6 +96,7 @@ export const confirmDonation = mutation({
     // Mark donation as completed
     await ctx.db.patch(args.donationId, {
       status: "confirmed",
+      cleared: true,
       providerTransactionId: paypalTransactionId,
       provider: "paypal",
       updatedAt: now,
