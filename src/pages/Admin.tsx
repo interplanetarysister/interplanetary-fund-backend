@@ -11,6 +11,7 @@ import PermissionsManager from "../components/PermissionsManager";
 import FraudControl from "../components/FraudControl";
 import UserManagement from "../components/UserManagement";
 import { FundMigrationDashboard } from "../components/FundMigrationDashboard";
+import { ExternalPlatformDashboard } from "../components/ExternalPlatformDashboard";
 import { api } from "../../convex/_generated/api";
 
 type AdminTab =
@@ -781,41 +782,7 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
       {/* ============ PLATFORMS ============ */}
       {tab === "platforms" && (
         <div className="space-y-3">
-          {externalBalances && externalBalances.total > 0 && (
-            <div className="card">
-              <h3 className="text-sm font-semibold text-iftext mb-3">Connected Platforms</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-ifdark rounded-xl p-3">
-                  <p className="text-xs text-ifmuted">External Raised</p>
-                  <p className="text-xl font-bold text-ifcyan mt-1">
-                    ${externalBalances.grandTotalRaised.toLocaleString()}
-                  </p>
-                </div>
-                <div className="bg-ifdark rounded-xl p-3">
-                  <p className="text-xs text-ifmuted">External Donors</p>
-                  <p className="text-xl font-bold text-ifgreen mt-1">
-                    {externalBalances.grandTotalDonors.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              {externalBalances.byPlatform && Object.keys(externalBalances.byPlatform).length > 0 && (
-                <div className="mt-3 pt-3 border-t border-ifborder space-y-2">
-                  {Object.entries(externalBalances.byPlatform).map(([platform, data]: [string, any]) => (
-                    <div key={platform} className="bg-ifdark rounded-xl p-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-iftext">{platform}</span>
-                        <span className="badge badge-cyan">{data.count} campaigns</span>
-                      </div>
-                      <div className="flex justify-between text-xs mt-1">
-                        <span className="text-ifmuted">Raised: ${data.totalRaised.toLocaleString()}</span>
-                        <span className="text-ifmuted">{data.totalDonors} donors</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <ExternalPlatformDashboard />
 
           <div className="card">
             <h3 className="text-sm font-semibold text-iftext mb-3">Connect External Campaign</h3>
