@@ -312,6 +312,37 @@ export default defineSchema({
     reportDate: v.optional(v.string()),
   }).index("byReported", ["reported"]).index("byPlatform", ["platform"]),
 
+  // ORGANIZER ACCOUNTS
+  // One row per campaign — the canonical organizer identity used across all platforms for that campaign.
+  // platformCredentials holds per-platform login records (email may differ per platform but all
+  // trace back to the same organizerEmail root identity).
+  organizerAccounts: defineTable({
+    campaignId: v.string(),
+    campaignTitle: v.string(),
+    organizerEmail: v.string(),       // root email used as the organizer identity
+    organizerName: v.string(),
+    // Per-platform credential records
+    platformCredentials: v.array(v.object({
+      platform: v.string(),
+      accountEmail: v.string(),
+      accountName: v.string(),
+      credentialsStored: v.boolean(),
+      provisionedAt: v.string(),
+      status: v.string(),            // "active" | "suspended" | "limited"
+      limitReason: v.optional(v.string()),
+    })),
+    triggerReason: v.string(),       // "platform_limit" | "workload" | "manual"
+    status: v.string(),              // "active" | "retired"
+    createdAt: v.string(),
+    updatedAt: v.string(),
+    reported: v.boolean(),
+    reportDate: v.optional(v.string()),
+  })
+    .index("byCampaignId", ["campaignId"])
+    .index("byOrganizerEmail", ["organizerEmail"])
+    .index("byStatus", ["status"])
+    .index("byReported", ["reported"]),
+
   // SPAM BLOCKLIST
   spamBlocklist: defineTable({
     identifier: v.string(),

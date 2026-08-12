@@ -98,4 +98,14 @@ crons.daily(
   {}
 );
 
+// Daily Organizer Account Provisioning — 7:30am Pacific (14:30 UTC)
+// Detects campaigns that need a new organizer account (platform limits, workload,
+// or new campaigns with no organizer yet) and auto-provisions them.
+crons.daily(
+  "daily-organizer-account-provisioning",
+  { hourUTC: 14, minuteUTC: 30 },
+  internal.organizerAccounts.autoProvisionNeeded,
+  {}
+);
+
 export default crons;
