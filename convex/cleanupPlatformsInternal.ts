@@ -14,23 +14,34 @@ export const cleanupPlaceholderUrlsInternal = internalMutation({
     const platforms = await ctx.db.query("externalPlatforms").collect();
 
     // Placeholder values or URLs shorter than a real URL (< 10 chars)
-    const placeholders = new Set(["F", "H", "D", "Jjj", ""]);
+    const placeholderUrls = new Set(["F", "H", "D", "Jjj", ""]);
+    // Single-character or known placeholder display names from legacy import
+    const placeholderDisplayNames = new Set(["F", "H", "T", "Y", "D", "Jjj"]);
     const cleaned = [];
 
     for (const platform of platforms) {
       const url = platform.externalUrl || "";
-      if (placeholders.has(url) || url.length < 10) {
-        await ctx.db.patch(platform._id, {
-          externalUrl: "",
+      const displayName = platform.displayName || "";
+      const hasPlaceholderUrl = placeholderUrls.has(url) || url.length < 10;
+      const hasPlaceholderName = placeholderDisplayNames.has(displayName);
+
+      if (hasPlaceholderUrl || hasPlaceholderName) {
+        const updates: Record<string, string> = {
           status: "draft",
-          lastError: "Placeholder URL cleaned by automated weekly job",
+          lastError: "Placeholder data cleaned by automated weekly job",
           lastSynced: new Date().toISOString(),
-        });
+        };
+        if (hasPlaceholderUrl) updates.externalUrl = "";
+        if (hasPlaceholderName) {
+          updates.displayName = `Interplanetary Fund – ${platform.platform} (pending)`;
+        }
+        await ctx.db.patch(platform._id, updates);
         cleaned.push({
           id: platform._id,
           platform: platform.platform,
-          displayName: platform.displayName,
+          oldDisplayName: displayName,
           oldUrl: url,
+          changes: Object.keys(updates).filter(k => !["status", "lastError", "lastSynced"].includes(k)),
         });
       }
     }
