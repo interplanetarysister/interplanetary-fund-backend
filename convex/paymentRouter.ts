@@ -27,6 +27,13 @@ type PaymentConfig = {
   blockchainApiBaseUrl: string;
 };
 
+type FeeBreakdown = {
+  platformFee: number;
+  processingFee: number;
+  totalFees: number;
+  netAmount: number;
+};
+
 function getNumberEnv(name: string, fallback: number): number {
   const raw = process.env[name];
   if (!raw) return fallback;
@@ -45,6 +52,22 @@ function getPaymentConfig(): PaymentConfig {
     bitcoinVerifyBaseBackoffSeconds: getNumberEnv("BITCOIN_VERIFY_BASE_BACKOFF_SECONDS", 30),
     exchangeRateCacheTtlSeconds: getNumberEnv("BTC_RATE_CACHE_TTL_SECONDS", 300),
     blockchainApiBaseUrl: process.env.BLOCKCHAIN_API_BASE_URL || "https://blockstream.info/api",
+  };
+}
+
+async function calculateNetDonationAmount(ctx: any, amount: number): Promise<FeeBreakdown> {
+  const feeConfig = await ctx.db.query("feeConfig").filter((q: any) => q.eq("active", true)).first();
+  const platformFeePercent = feeConfig?.platformFeePercent ?? 5;
+  const processingFeePercent = feeConfig?.processingFeePercent ?? 2.9;
+  const processingFeeFlat = feeConfig?.processingFeeFlat ?? 0.30;
+  const platformFee = amount * (platformFeePercent / 100);
+  const processingFee = amount * (processingFeePercent / 100) + processingFeeFlat;
+  const totalFees = platformFee + processingFee;
+  return {
+    platformFee,
+    processingFee,
+    totalFees,
+    netAmount: amount - totalFees,
   };
 }
 
@@ -209,6 +232,7 @@ export const createDonationIntent = mutation({
     message: v.optional(v.string()),
     paymentMethod: v.union(v.literal("paypal"), v.literal("cashapp"), v.literal("bitcoin")),
     idempotencyKey: v.optional(v.string()),
+    returnUrlBase: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     checkRateLimit("donation_intent", 20, 60000);
@@ -276,6 +300,17 @@ export const createDonationIntent = mutation({
       paypalUrl.searchParams.set("amount", args.amountUSD.toFixed(2));
       paypalUrl.searchParams.set("currency_code", "USD");
       paypalUrl.searchParams.set("custom", paymentReference);
+      if (args.returnUrlBase) {
+        const successUrl = new URL(args.returnUrlBase);
+        successUrl.searchParams.set("donation", "success");
+        successUrl.searchParams.set("if_ref", paymentReference);
+        successUrl.searchParams.set("campaignId", args.campaignId);
+        paypalUrl.searchParams.set("return", successUrl.toString());
+
+        const cancelUrl = new URL(args.returnUrlBase);
+        cancelUrl.searchParams.set("campaignId", args.campaignId);
+        paypalUrl.searchParams.set("cancel_return", cancelUrl.toString());
+      }
       checkout = {
         url: paypalUrl.toString(),
       };
@@ -375,6 +410,42 @@ export const confirmExternalDonation = mutation({
     });
 
     return { status: args.status };
+  },
+});
+
+export const getDonationReceipt = query({
+  args: {
+    paymentReference: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const donation = await ctx.db
+      .query("donations")
+      .withIndex("byPaymentReference", (q: any) => q.eq("paymentReference", args.paymentReference))
+      .first();
+
+    if (!donation) {
+      return null;
+    }
+
+    const feeBreakdown = await calculateNetDonationAmount(ctx, donation.amount);
+
+    return {
+      donationId: donation._id,
+      campaignId: donation.campaignId,
+      campaignTitle: donation.campaignTitle,
+      donorName: donation.donorName || "Anonymous",
+      amount: donation.amount,
+      currency: donation.currency || USD_CURRENCY,
+      paymentMethod: donation.paymentMethod,
+      paymentProvider: donation.provider || donation.paymentMethod,
+      paymentReference: donation.paymentReference,
+      providerTransactionId: donation.providerTransactionId,
+      status: donation.status,
+      createdAt: donation.createdAt,
+      confirmedAt: donation.confirmedAt,
+      receiptTimestamp: donation.confirmedAt || donation.createdAt,
+      feeBreakdown,
+    };
   },
 });
 
