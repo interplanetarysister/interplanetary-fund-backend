@@ -14,6 +14,7 @@ const Explore = lazy(() => import("./pages/Explore"));
 const FacebookGroups = lazy(() => import("./pages/FacebookGroups"));
 const Admin = lazy(() => import("./pages/Admin"));
 const GlobePage = lazy(() => import("./pages/Globe"));
+const PayoutSelection = lazy(() => import("./pages/PayoutSelection"));
 
 // Loading fallback — shows briefly while page chunk downloads on first tap
 function PageLoader() {
@@ -28,7 +29,7 @@ function PageLoader() {
   );
 }
 
-type View = "explore" | "facebook" | "globe" | "admin";
+type View = "explore" | "facebook" | "globe" | "payouts" | "admin";
 
 export default function App() {
   const [view, setView] = useState<View>("explore");
@@ -50,6 +51,7 @@ export default function App() {
       { id: "explore", label: "Launch Pads", icon: "\u2705" },
       { id: "globe", label: "Earth", icon: "\u{1F30D}" },
       { id: "facebook", label: "Sectors", icon: "f" },
+      { id: "payouts", label: "Payouts", icon: "\u{1F4B8}" },
     ],
     []
   );
@@ -108,6 +110,7 @@ export default function App() {
               <p className="text-[10px] text-ifmuted">
                 {view === "admin" ? `Cockpit — ${adminUser?.name || ""}` :
                  view === "facebook" ? "Outreach Sectors" :
+                 view === "payouts" ? "Payout Selection" :
                  view === "globe" ? "Global Campaign Locator" :
                  "Fuel a cause today"}
               </p>
@@ -147,6 +150,7 @@ export default function App() {
           {view === "explore" && <Explore />}
           {view === "globe" && <GlobePage />}
           {view === "facebook" && <FacebookGroups />}
+          {view === "payouts" && <PayoutSelection />}
           {view === "admin" && <Admin adminUser={adminUser} />}
         </Suspense>
       </main>

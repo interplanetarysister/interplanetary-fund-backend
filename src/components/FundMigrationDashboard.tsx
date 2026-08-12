@@ -4,7 +4,7 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
@@ -20,10 +20,9 @@ type Step = "entries" | "payout" | "confirm" | "result";
 const PAYOUT_OPTIONS = [
   { method: "cashapp",  destination: "$unrewound",                                      label: "CashApp",  hint: "$unrewound" },
   { method: "paypal",   destination: "interplanetarysister@gmail.com",                  label: "PayPal",   hint: "interplanetarysister@gmail.com" },
-  { method: "bitcoin",  destination: "bc1qfgwz5fasnkml0f2z7ynvw5lk6v77ez66fql3pz",     label: "Bitcoin",  hint: "bc1qfgwz5fasnkml0f2z7ynvw5lk6v77ez66fql3pz" },
 ];
 
-export function FundMigrationDashboard() {
+export function FundMigrationDashboard({ initialCampaignId }: { initialCampaignId?: string }) {
   const [step, setStep] = useState<Step>("entries");
   const [migrations, setMigrations] = useState<Migration[]>([
     { campaignId: "", campaignTitle: "", sourcePlatform: "", grossAmount: 0 },
@@ -34,8 +33,25 @@ export function FundMigrationDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const batchMigrate = useMutation(api.fundMigration.batchMigrate);
+  const selectPayoutMethod = useMutation(api.fundMigration.selectPayoutMethod);
   const campaigns = useQuery(api.campaigns.getCampaigns, {});
   const pendingPayouts = useQuery(api.fundMigration.getPendingPayouts, {});
+
+  useEffect(() => {
+    if (!initialCampaignId || !campaigns || campaigns.length === 0) return;
+    const selected = (campaigns as any[]).find((c: any) => c.ifCampaignId === initialCampaignId);
+    if (!selected) return;
+    setMigrations((prev) => {
+      if (!prev[0] || prev[0].campaignId) return prev;
+      const next = [...prev];
+      next[0] = {
+        ...next[0],
+        campaignId: selected.ifCampaignId,
+        campaignTitle: selected.title,
+      };
+      return next;
+    });
+  }, [initialCampaignId, campaigns]);
 
   const addMigration = () => {
     setMigrations([...migrations, { campaignId: "", campaignTitle: "", sourcePlatform: "", grossAmount: 0 }]);
@@ -80,6 +96,17 @@ export function FundMigrationDashboard() {
         migrations: validMigrations,
         withdrawnBy: "admin",
       });
+      if (res?.details?.length) {
+        await Promise.all(
+          res.details.map((item: any) =>
+            selectPayoutMethod({
+              payoutId: item.payoutId,
+              payoutMethod: payoutMethod as "cashapp" | "paypal",
+              payoutDestination: payoutDest,
+            })
+          )
+        );
+      }
       setResult(res);
       setStep("result");
     } catch (e: any) {
@@ -317,7 +344,7 @@ export function FundMigrationDashboard() {
         </div>
 
         <p className="text-[10px] text-ifmuted text-center">
-          Payout requests created — admin must approve before funds are sent.
+          Payout requests created and destinations saved for campaign-owner payout.
         </p>
 
         <button
