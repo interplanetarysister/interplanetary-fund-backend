@@ -5,15 +5,17 @@
  */
 
 import { TermsAcceptance } from "./components/TermsAcceptance";
-import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useMemo, useCallback, lazy, Suspense, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import Explore from "./pages/Explore";
 
 // Lazy load pages
-const Explore = lazy(() => import("./pages/Explore"));
 const FacebookGroups = lazy(() => import("./pages/FacebookGroups"));
 const Admin = lazy(() => import("./pages/Admin"));
 const GlobePage = lazy(() => import("./pages/Globe"));
+
+const PAGE_LOAD_TIMEOUT_MS = 12000;
 
 // Loading fallback — shows briefly while page chunk downloads on first tap
 function PageLoader() {
@@ -29,6 +31,54 @@ function PageLoader() {
 }
 
 type View = "explore" | "facebook" | "globe" | "admin";
+
+function getViewLabel(view: Exclude<View, "explore">) {
+  switch (view) {
+    case "facebook":
+      return "Outreach Sectors";
+    case "globe":
+      return "Global Campaign Locator";
+    case "admin":
+      return "Cockpit";
+  }
+}
+
+function LazyPageFallback({ view }: { view: Exclude<View, "explore"> }) {
+  const [timedOut, setTimedOut] = useState(false);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setTimedOut(true);
+    }, PAGE_LOAD_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [view]);
+
+  if (!timedOut) {
+    return <PageLoader />;
+  }
+
+  return (
+    <div className="card text-center py-8 space-y-3">
+      <div className="text-3xl">⚠️</div>
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-iftext">{getViewLabel(view)} is taking too long to open</h3>
+        <p className="text-xs text-ifmuted">
+          The screen did not finish loading. Retry the app to reload the latest bundled assets.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        className="btn-primary"
+      >
+        Retry loading
+      </button>
+    </div>
+  );
+}
 
 export default function App() {
   const [view, setView] = useState<View>("explore");
@@ -143,12 +193,15 @@ export default function App() {
 
       {/* Content */}
       <main className={`max-w-md mx-auto px-4 py-4 pb-20 min-h-screen flex-1 ${view === "globe" ? "p-0 max-w-none" : ""}`}>
-        <Suspense fallback={<PageLoader />}>
-          {view === "explore" && <Explore />}
-          {view === "globe" && <GlobePage />}
-          {view === "facebook" && <FacebookGroups />}
-          {view === "admin" && <Admin adminUser={adminUser} />}
-        </Suspense>
+          {view === "explore" ? (
+            <Explore />
+          ) : (
+            <Suspense fallback={<LazyPageFallback view={view} />}>
+              {view === "globe" && <GlobePage />}
+              {view === "facebook" && <FacebookGroups />}
+              {view === "admin" && <Admin adminUser={adminUser} />}
+            </Suspense>
+          )}
       </main>
 
       {/* Bottom Navigation */}
