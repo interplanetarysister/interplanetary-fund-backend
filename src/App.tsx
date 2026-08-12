@@ -193,15 +193,22 @@ export default function App() {
 
       {/* Content */}
       <main className={`max-w-md mx-auto px-4 py-4 pb-20 min-h-screen flex-1 ${view === "globe" ? "p-0 max-w-none" : ""}`}>
-          {view === "explore" ? (
-            <Explore />
-          ) : (
-            <Suspense fallback={<LazyPageFallback view={view} />}>
-              {view === "globe" && <GlobePage />}
-              {view === "facebook" && <FacebookGroups />}
-              {view === "admin" && <Admin adminUser={adminUser} />}
-            </Suspense>
-          )}
+        {view === "explore" && <Explore />}
+        {view === "globe" && (
+          <Suspense fallback={<LazyPageFallback view="globe" />}>
+            <GlobePage />
+          </Suspense>
+        )}
+        {view === "facebook" && (
+          <Suspense fallback={<LazyPageFallback view="facebook" />}>
+            <FacebookGroups />
+          </Suspense>
+        )}
+        {view === "admin" && (
+          <Suspense fallback={<LazyPageFallback view="admin" />}>
+            <Admin adminUser={adminUser} />
+          </Suspense>
+        )}
       </main>
 
       {/* Bottom Navigation */}
