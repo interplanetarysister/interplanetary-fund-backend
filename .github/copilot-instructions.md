@@ -15,7 +15,7 @@ The Interplanetary Fund is a woman-owned fundraising platform built by Michelle 
 - **URL**: https://rosy-butterfly-2.convex.cloud
 - **REST API**: POST https://rosy-butterfly-2.convex.cloud/api/query
 - **Purpose**: Source of truth for all application data — analytics, protocol enforcement, treasury, agents
-- **8 Tables**: agents, monitoredCampaigns, protocolReports, externalPlatforms, holdingAccounts, payoutRequests, transactions, feeConfig
+- **Data Tables**: See `convex/schema.ts` for the full active table list (includes treasury, donations, user/admin, platform, and inbox/posting data).
 - **Crons**: Daily 6am audit, weekly Saturday 2am training
 
 ### 3. Capacitor Android (`android/`)
@@ -57,13 +57,21 @@ GitHub push
 Bluesky, Patreon, Facebook, Ko-fi, Buy Me a Coffee, Spotfund, FundRazr, Indiegogo, GiveSendGo, Kickstarter, GoFundMe
 
 ## Convex Backend Files
-- `convex/schema.ts` — 8 tables
+- `convex/schema.ts` — Full active Convex data schema
 - `convex/agents.ts` — Agent CRUD, stats, memory updates
 - `convex/campaigns.ts` — Campaign sync, platform connections
 - `convex/treasury.ts` — Fees, payouts, balance aggregation
 - `convex/protocol.ts` — P-1 through P-8 enforcement, auto-fix
 - `convex/crons.ts` — Daily audit + weekly training
 - `convex/seed.ts` — Seeds real campaign and agent data
+
+## Banking Implementation Status (Repo-Verified)
+- Donation intent + confirmation flows are implemented in `convex/paymentRouter.ts` and `convex/paypalCheckout.ts`.
+- Treasury fee math, deposits, payout requests, and payout completion are implemented in `convex/treasury.ts`.
+- Campaign-level withdrawal queueing and admin payout confirmation are implemented in `convex/simpleWithdraw.ts` and `convex/withdrawalMethods.ts`.
+- Admin fraud review/freeze workflows for payouts are implemented in `convex/fraudControl.ts`.
+- Scheduled fund migration and external balance checks are implemented via `convex/fundMigration.ts` + `convex/crons.ts`.
+- There is currently no dedicated `convex/webhooks.ts` file or `convex/http.ts` webhook router in this repository.
 
 ## Protocol Standards (P-1 through P-8)
 - P-1: outreach_enabled = true
