@@ -14,7 +14,25 @@ const MIN_AMOUNT = 1;
 
 type PaymentMethod = "cashapp" | "paypal" | "bitcoin";
 
+function getInitialReceiptState() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    paymentReference: params.get("donation") === "success" ? params.get("if_ref") : null,
+    providerTransactionId:
+      params.get("tx") ||
+      params.get("txn_id") ||
+      params.get("transaction_id") ||
+      params.get("paymentId") ||
+      null,
+  };
+}
+
+function formatCurrency(amount: number) {
+  return `$${amount.toFixed(2)}`;
+}
+
 export default function Explore() {
+  const initialReceiptState = getInitialReceiptState();
   // Paginated campaigns — loads 8 at a time, more on scroll
   const { results: campaigns, status: campaignStatus, loadMore } = usePaginatedQuery(
     api.campaigns.getCampaigns,
@@ -25,7 +43,14 @@ export default function Explore() {
   const stats = useQuery(api.campaigns.getCampaignStats, {});
   const balances = useQuery(api.treasury.aggregateBalances, {});
   const paymentMethods = useQuery((api as any).paymentRouter.getAvailablePaymentMethods, {});
+  const donationReceipt = useQuery(
+    (api as any).paymentRouter.getDonationReceipt,
+    initialReceiptState.paymentReference
+      ? { paymentReference: initialReceiptState.paymentReference }
+      : "skip"
+  );
   const createDonationIntent = useMutation((api as any).paymentRouter.createDonationIntent);
+  const confirmExternalDonation = useMutation((api as any).paymentRouter.confirmExternalDonation);
   const verifyBitcoinDonation = useMutation((api as any).paymentRouter.verifyBitcoinDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
 
@@ -39,6 +64,11 @@ export default function Explore() {
   const [intentResult, setIntentResult] = useState<any | null>(null);
   const [bitcoinQr, setBitcoinQr] = useState("");
   const [verificationResult, setVerificationResult] = useState<any | null>(null);
+  const [confirmationReference, setConfirmationReference] = useState<string | null>(initialReceiptState.paymentReference);
+  const [confirmationTransactionId, setConfirmationTransactionId] = useState<string | null>(initialReceiptState.providerTransactionId);
+  const [isConfirmingReceipt, setIsConfirmingReceipt] = useState(false);
+  const [receiptConfirmationError, setReceiptConfirmationError] = useState<string | null>(null);
+  const [hasAttemptedReceiptConfirmation, setHasAttemptedReceiptConfirmation] = useState(false);
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
@@ -74,6 +104,34 @@ export default function Explore() {
       cancelled = true;
     };
   }, [intentResult?.bitcoin?.paymentUri]);
+
+  useEffect(() => {
+    if (!confirmationReference || !donationReceipt?.donationId || !confirmationTransactionId || hasAttemptedReceiptConfirmation) {
+      return;
+    }
+
+    setHasAttemptedReceiptConfirmation(true);
+    setIsConfirmingReceipt(true);
+    setReceiptConfirmationError(null);
+
+    confirmExternalDonation({
+      donationId: donationReceipt.donationId,
+      providerTransactionId: confirmationTransactionId,
+      status: "confirmed",
+    })
+      .catch((error: any) => {
+        setReceiptConfirmationError(error?.message || "We couldn't verify the PayPal transaction automatically.");
+      })
+      .finally(() => {
+        setIsConfirmingReceipt(false);
+      });
+  }, [
+    confirmationReference,
+    confirmationTransactionId,
+    donationReceipt?.donationId,
+    hasAttemptedReceiptConfirmation,
+    confirmExternalDonation,
+  ]);
 
   if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {
     return (
@@ -154,6 +212,7 @@ export default function Explore() {
     setDonationStep("processing");
     try {
       const idempotencyKey = `${selectedCampaign.ifCampaignId}:${paymentMethod}:${numericAmount.toFixed(2)}:${Date.now()}`;
+      const returnUrlBase = `${window.location.origin}${window.location.pathname}`;
       const intent = await createDonationIntent({
         campaignId: selectedCampaign.ifCampaignId,
         campaignTitle: selectedCampaign.title,
@@ -162,6 +221,7 @@ export default function Explore() {
         message: donationMessage || undefined,
         paymentMethod,
         idempotencyKey,
+        returnUrlBase,
       });
       setIntentResult(intent);
 
@@ -203,8 +263,164 @@ export default function Explore() {
     }
   };
 
+  const clearReceiptParams = () => {
+    const url = new URL(window.location.href);
+    ["donation", "if_ref", "tx", "txn_id", "transaction_id", "paymentId", "st", "cm", "campaignId"].forEach((key) =>
+      url.searchParams.delete(key)
+    );
+    const nextUrl = `${url.pathname}${url.search ? `${url.search}` : ""}${url.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+    setConfirmationReference(null);
+    setConfirmationTransactionId(null);
+    setReceiptConfirmationError(null);
+    setHasAttemptedReceiptConfirmation(false);
+  };
+
+  const handleReturnFromReceipt = () => {
+    clearReceiptParams();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleShareReceipt = async () => {
+    if (!donationReceipt) return;
+    const shareUrl = `${window.location.origin}${window.location.pathname}`;
+    const shareData = {
+      title: "Interplanetary Fund donation",
+      text: `I donated ${formatCurrency(donationReceipt.amount)} to "${donationReceipt.campaignTitle}" on Interplanetary Fund.`,
+      url: shareUrl,
+    };
+
+    if (navigator.share) {
+      await navigator.share(shareData).catch(() => {});
+      return;
+    }
+
+    await navigator.clipboard?.writeText(`${shareData.text} ${shareData.url}`).catch(() => {});
+  };
+
   return (
     <div className="space-y-5">
+      {confirmationReference && (
+        <div className="card space-y-4">
+          {donationReceipt === undefined ? (
+            <div className="py-12 text-center">
+              <div className="w-10 h-10 border-2 border-ifaccent border-t-transparent rounded-full animate-spin mx-auto" />
+              <p className="text-sm text-ifmuted mt-3">Loading your donation receipt...</p>
+            </div>
+          ) : donationReceipt ? (
+            <>
+              <div className="text-center space-y-2">
+                <div className="w-16 h-16 rounded-full bg-ifgreen/20 flex items-center justify-center mx-auto">
+                  <span className="text-3xl">💝</span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-iftext">Thank you for your donation!</h2>
+                  <p className="text-sm text-ifmuted">
+                    Your contribution to "{donationReceipt.campaignTitle}" has been recorded.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-ifborder bg-ifborder/40 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-ifmuted">Donation receipt</p>
+                    <p className="text-lg font-bold text-iftext">{formatCurrency(donationReceipt.amount)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-ifmuted">Net to campaign</p>
+                    <p className="text-base font-semibold text-ifgreen">
+                      {formatCurrency(donationReceipt.feeBreakdown.netAmount)}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Campaign</span>
+                    <span className="text-iftext text-right">{donationReceipt.campaignTitle}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Donor</span>
+                    <span className="text-iftext text-right">{donationReceipt.donorName}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Payment method</span>
+                    <span className="text-iftext text-right">PayPal</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Transaction ID</span>
+                    <span className="text-iftext text-right break-all">
+                      {confirmationTransactionId || donationReceipt.providerTransactionId || donationReceipt.paymentReference}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Receipt reference</span>
+                    <span className="text-iftext text-right break-all">{donationReceipt.paymentReference}</span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Timestamp</span>
+                    <span className="text-iftext text-right">
+                      {new Date(donationReceipt.receiptTimestamp).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="text-ifmuted">Status</span>
+                    <span className="text-iftext text-right capitalize">
+                      {isConfirmingReceipt ? "Confirming" : donationReceipt.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {receiptConfirmationError && (
+                <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+                  {receiptConfirmationError}
+                </div>
+              )}
+
+              {!confirmationTransactionId && (
+                <div className="rounded-xl border border-ifamber/30 bg-ifamber/10 px-3 py-2 text-xs text-iftext">
+                  PayPal did not return a transaction ID in the browser redirect, so this receipt is using your Interplanetary Fund reference until PayPal confirmation is available.
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  onClick={() => {
+                    handleShareReceipt().catch(() => {});
+                  }}
+                  className="w-full py-3 rounded-xl bg-ifaccent text-white text-sm font-semibold"
+                >
+                  Share donation
+                </button>
+                <button
+                  onClick={handleReturnFromReceipt}
+                  className="w-full py-3 rounded-xl bg-ifborder text-iftext text-sm font-semibold"
+                >
+                  Return to campaigns
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3 py-8 text-center">
+              <h2 className="text-lg font-bold text-iftext">Receipt unavailable</h2>
+              <p className="text-sm text-ifmuted">
+                We couldn't find that donation receipt. Please return to the campaign list and try again.
+              </p>
+              <button
+                onClick={handleReturnFromReceipt}
+                className="w-full py-3 rounded-xl bg-ifborder text-iftext text-sm font-semibold"
+              >
+                Back to homepage
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!confirmationReference && (
+        <>
       {/* Hero Banner */}
       <div className="rounded-2xl bg-gradient-to-br from-ifaccent/20 to-ifcyan/10 border border-ifborder p-5">
         <h2 className="text-xl font-bold text-iftext">Together we can</h2>
@@ -611,6 +827,8 @@ export default function Explore() {
             )}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   );
