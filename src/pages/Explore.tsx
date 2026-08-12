@@ -13,6 +13,7 @@ const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
 const MIN_AMOUNT = 1;
 
 type PaymentMethod = "cashapp" | "paypal" | "bitcoin";
+type DonationRecurrence = "one_time" | "monthly";
 
 export default function Explore() {
   // Paginated campaigns — loads 8 at a time, more on scroll
@@ -35,6 +36,7 @@ export default function Explore() {
   const [donationMessage, setDonationMessage] = useState("");
   const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done" | "bitcoin">("amount");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
+  const [donationRecurrence, setDonationRecurrence] = useState<DonationRecurrence>("one_time");
   const [viewedCampaigns, setViewedCampaigns] = useState<Set<string>>(new Set());
   const [intentResult, setIntentResult] = useState<any | null>(null);
   const [bitcoinQr, setBitcoinQr] = useState("");
@@ -115,6 +117,7 @@ export default function Explore() {
     setDonationAmount("25");
     setDonorName("");
     setDonationMessage("");
+    setDonationRecurrence("one_time");
     setIntentResult(null);
     setVerificationResult(null);
     setDonationStep("amount");
@@ -161,6 +164,7 @@ export default function Explore() {
         donorName: donorName || undefined,
         message: donationMessage || undefined,
         paymentMethod,
+        recurrence: paymentMethod === "paypal" ? donationRecurrence : "one_time",
         idempotencyKey,
       });
       setIntentResult(intent);
@@ -498,6 +502,30 @@ export default function Explore() {
                         ? "Opens CashApp — external link flow (not auto-confirmed)."
                         : "Shows Bitcoin address + QR and confirms on-chain after required confirmations."}
                   </p>
+                  {paymentMethod === "paypal" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setDonationRecurrence("one_time")}
+                        className={`py-2 rounded-xl border text-xs font-semibold ${
+                          donationRecurrence === "one_time"
+                            ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
+                            : "border-ifborder text-ifmuted"
+                        }`}
+                      >
+                        One-time
+                      </button>
+                      <button
+                        onClick={() => setDonationRecurrence("monthly")}
+                        className={`py-2 rounded-xl border text-xs font-semibold ${
+                          donationRecurrence === "monthly"
+                            ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
+                            : "border-ifborder text-ifmuted"
+                        }`}
+                      >
+                        Monthly
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={handleCompleteDonation}
                     className={`w-full py-3 rounded-xl text-white text-sm font-semibold active:scale-[0.98] transition-transform ${
@@ -572,6 +600,21 @@ export default function Explore() {
                   <p className="text-sm text-ifmuted mt-1">
                     Your ${numericAmount.toLocaleString()} donation intent for "{selectedCampaign.title}" was created.
                   </p>
+                  <div className="mt-3 bg-ifborder rounded-xl p-3 text-left space-y-1 text-xs">
+                    <p><span className="text-ifmuted">Receipt:</span> <span className="text-iftext font-semibold">{intentResult?.paymentReference || "pending"}</span></p>
+                    <p><span className="text-ifmuted">Method:</span> <span className="text-iftext font-semibold">{paymentMethod === "paypal" ? "PayPal" : paymentMethod === "cashapp" ? "CashApp" : "Bitcoin"}</span></p>
+                    {paymentMethod === "paypal" && (
+                      <p><span className="text-ifmuted">Type:</span> <span className="text-iftext font-semibold">{donationRecurrence === "monthly" ? "Recurring (Monthly)" : "One-time"}</span></p>
+                    )}
+                    <p><span className="text-ifmuted">Gross:</span> <span className="text-iftext font-semibold">${numericAmount.toFixed(2)}</span></p>
+                    {paymentMethod === "paypal" && (
+                      <>
+                        <p><span className="text-ifmuted">Platform fee (5%):</span> <span className="text-iftext font-semibold">${(numericAmount * 0.05).toFixed(2)}</span></p>
+                        <p><span className="text-ifmuted">Processing (2.9% + $0.30):</span> <span className="text-iftext font-semibold">${(numericAmount * 0.029 + 0.30).toFixed(2)}</span></p>
+                        <p><span className="text-ifmuted">Net to owner:</span> <span className="text-iftext font-semibold">${(numericAmount - (numericAmount * 0.05) - (numericAmount * 0.029 + 0.30)).toFixed(2)}</span></p>
+                      </>
+                    )}
+                  </div>
                   <p className="text-[10px] text-ifmuted mt-2">
                     {paymentMethod === "bitcoin"
                       ? "Bitcoin donations are only marked confirmed after on-chain verification and required confirmations."

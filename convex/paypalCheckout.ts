@@ -30,9 +30,11 @@ export const createCheckoutSession = mutation({
       donorName: args.donorName,
       message: args.message || "",
       paymentMethod: "paypal",
+      recurrence: "one_time",
       provider: "paypal",
       currency: "USD",
       status: "pending",
+      cleared: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -95,6 +97,7 @@ export const confirmDonation = mutation({
     // Mark donation as completed
     await ctx.db.patch(args.donationId, {
       status: "confirmed",
+      cleared: true,
       providerTransactionId: paypalTransactionId,
       provider: "paypal",
       updatedAt: now,
