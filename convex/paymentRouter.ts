@@ -14,6 +14,7 @@ const SATOSHIS_PER_BTC = 100_000_000;
 const ONE_SATOSHI_BTC = 1 / SATOSHIS_PER_BTC;
 
 type PaymentMethod = "paypal" | "cashapp" | "bitcoin";
+type PayPalDonationType = "one_time" | "monthly";
 
 type PaymentConfig = {
   paypalBusinessEmail?: string;
@@ -151,6 +152,7 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
   await ctx.db.patch(donation._id, {
     status: "confirmed",
     confirmedAt: now,
+    cleared: true,
     providerTransactionId: providerTransactionId || donation.providerTransactionId,
     updatedAt: now,
   });
@@ -208,7 +210,10 @@ export const createDonationIntent = mutation({
     donorName: v.optional(v.string()),
     message: v.optional(v.string()),
     paymentMethod: v.union(v.literal("paypal"), v.literal("cashapp"), v.literal("bitcoin")),
+    donationType: v.optional(v.union(v.literal("one_time"), v.literal("monthly"))),
     idempotencyKey: v.optional(v.string()),
+    successUrl: v.optional(v.string()),
+    cancelUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     checkRateLimit("donation_intent", 20, 60000);
@@ -246,6 +251,7 @@ export const createDonationIntent = mutation({
     const now = new Date();
     const createdAt = now.toISOString();
     const paymentReference = createPaymentReference();
+    const donationType: PayPalDonationType = args.donationType || "one_time";
 
     const baseDonation: any = {
       campaignId: args.campaignId,
@@ -261,6 +267,9 @@ export const createDonationIntent = mutation({
       updatedAt: createdAt,
       paymentReference,
       idempotencyKey: args.idempotencyKey,
+      recurring: args.paymentMethod === "paypal" ? donationType !== "one_time" : false,
+      recurringInterval: args.paymentMethod === "paypal" && donationType === "monthly" ? "monthly" : undefined,
+      cleared: false,
       expiresAt: new Date(now.getTime() + getNumberEnv("DONATION_INTENT_EXPIRY_MINUTES", 60) * 60_000).toISOString(),
     };
 
@@ -270,12 +279,36 @@ export const createDonationIntent = mutation({
     if (args.paymentMethod === "paypal") {
       const paypalBusinessEmail = config.paypalBusinessEmail!;
       const paypalUrl = new URL("https://www.paypal.com/donate");
-      paypalUrl.searchParams.set("cmd", "_donations");
+      const isRecurring = donationType === "monthly";
+      paypalUrl.searchParams.set("cmd", isRecurring ? "_xclick-subscriptions" : "_donations");
       paypalUrl.searchParams.set("business", paypalBusinessEmail);
       paypalUrl.searchParams.set("item_name", `${args.campaignTitle} - Interplanetary Fund`);
-      paypalUrl.searchParams.set("amount", args.amountUSD.toFixed(2));
       paypalUrl.searchParams.set("currency_code", "USD");
       paypalUrl.searchParams.set("custom", paymentReference);
+      if (isRecurring) {
+        paypalUrl.searchParams.set("a3", args.amountUSD.toFixed(2));
+        paypalUrl.searchParams.set("p3", "1");
+        paypalUrl.searchParams.set("t3", "M");
+        paypalUrl.searchParams.set("src", "1");
+      } else {
+        paypalUrl.searchParams.set("amount", args.amountUSD.toFixed(2));
+      }
+      if (args.successUrl) {
+        const successUrl = new URL(args.successUrl);
+        successUrl.searchParams.set("if_provider", "paypal");
+        successUrl.searchParams.set("if_ref", paymentReference);
+        successUrl.searchParams.set("if_status", "success");
+        successUrl.searchParams.set("if_type", donationType);
+        paypalUrl.searchParams.set("return", successUrl.toString());
+      }
+      if (args.cancelUrl) {
+        const cancelUrl = new URL(args.cancelUrl);
+        cancelUrl.searchParams.set("if_provider", "paypal");
+        cancelUrl.searchParams.set("if_ref", paymentReference);
+        cancelUrl.searchParams.set("if_status", "cancel");
+        cancelUrl.searchParams.set("if_type", donationType);
+        paypalUrl.searchParams.set("cancel_return", cancelUrl.toString());
+      }
       checkout = {
         url: paypalUrl.toString(),
       };
@@ -644,8 +677,45 @@ export const getDonationStatus = query({
       providerTransactionId: donation.providerTransactionId || donation.bitcoinTxHash || null,
       createdAt: donation.createdAt,
       confirmedAt: donation.confirmedAt || null,
+      recurring: donation.recurring || false,
+      recurringInterval: donation.recurringInterval || null,
+      cleared: donation.cleared || false,
       expiresAt: donation.expiresAt || null,
       bitcoin: donation.bitcoin || null,
+    };
+  },
+});
+
+export const getDonationByPaymentReference = query({
+  args: {
+    paymentReference: v.string(),
+  },
+  handler: async (ctx, args) => {
+    checkRateLimit("donation_lookup", 60, 60000);
+    const donation = await ctx.db
+      .query("donations")
+      .withIndex("byPaymentReference", (q: any) => q.eq("paymentReference", args.paymentReference))
+      .first();
+
+    if (!donation) {
+      return null;
+    }
+
+    return {
+      donationId: donation._id,
+      campaignId: donation.campaignId,
+      campaignTitle: donation.campaignTitle,
+      donorName: donation.donorName,
+      amount: donation.amount,
+      status: donation.status,
+      paymentMethod: donation.paymentMethod,
+      paymentReference: donation.paymentReference,
+      providerTransactionId: donation.providerTransactionId || null,
+      createdAt: donation.createdAt,
+      confirmedAt: donation.confirmedAt || null,
+      recurring: donation.recurring || false,
+      recurringInterval: donation.recurringInterval || null,
+      cleared: donation.cleared || false,
     };
   },
 });
