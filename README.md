@@ -1,124 +1,32 @@
-# Interplanetary Fund
+# Interplanetary Fund — Legacy Backend Snapshot
 
-Credit-free fundraising platform with AI agent coordination, protocol enforcement, and treasury management.
+> **Repository status: LEGACY / REFERENCE ONLY**
+>
+> This repository is no longer the canonical production backend for Interplanetary Fund.
 
-## Quick Start
+## Canonical repositories
 
-```bash
-npm install
-cp .env.example .env.local  # Set VITE_CONVEX_URL
-npm run dev                  # Start frontend + Convex
-```
+- **Application:** `interplanetarysister/interplanetary-fund2`
+- **Authoritative backend / agent runtime:** `interplanetarysister/InterplanetaryFund`
 
-## Architecture
+The canonical backend repository is the actively maintained Convex system and is the source of truth for agents, persistent agent memory, campaigns, protocol enforcement, treasury, payments, scheduled jobs, and platform intelligence.
 
-- **Frontend**: React + Vite + Tailwind (mobile-first, Galaxy A16 optimized)
-- **Backend**: Convex (serverless, real-time WebSocket, credit-free)
-- **Mobile**: Capacitor wrapper for Android APK & iOS
-- **Hosting**: Vercel (web), Base44 (APK production)
-- **Source**: This GitHub repository is the single source of truth
+The Base44-linked application remains in `interplanetary-fund2`. It is the user-facing application layer and communicates with the canonical Convex backend through explicit integration boundaries.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full system diagram.
+## Why this repository is retained
 
-## Connections
+This repository contains an important historical implementation of the Convex backend, payment router, crowdfunding migration work, mobile build work, and earlier Base44 synchronization architecture. It is retained so that functionality can be audited, migrated, or recovered without losing project history.
 
-| Service | Purpose | Connected Via |
-|---------|---------|---------------|
-| GitHub | Source code + Copilot | This repo |
-| Vercel | Web hosting | Auto-deploy from GitHub main branch |
-| Convex | Backend + database | `VITE_CONVEX_URL` env var |
-| Base44 | APK production | Backend function syncs Convex → Base44 entities |
-| Copilot | AI code assistant | `.github/copilot-instructions.md` |
+**Do not add new production features here.** New backend functionality should be implemented in `InterplanetaryFund` and reviewed/merged there.
 
-## Build Commands
+## Migration rule
 
-```bash
-# Web development
-npm run dev          # Local dev server + Convex
-npm run build        # Production build to dist/
-npm run preview      # Preview production build
+If functionality exists here but not in the canonical backend, first compare the implementations and migrate the capability into `InterplanetaryFund` through a repository-local feature branch and review. Do not make `interplanetary-fund-backend` a second production source of truth.
 
-# Convex backend
-npx convex dev       # Run backend locally
-npx convex deploy    # Deploy backend to cloud
+## Historical architecture
 
-# Mobile app
-npm run cap:sync     # Build web + sync to native
-npm run cap:android  # Open Android Studio
-npm run cap:ios      # Open Xcode (macOS)
-npm run mobile:build:apk  # Build debug APK from command line
-```
+This repository previously described itself as a full-stack React/Convex application and included Convex agent CRUD, campaign synchronization, treasury management, protocol enforcement, scheduled jobs, and Base44 synchronization. Those files remain valuable as migration/reference material, but the repository has been superseded by the actively maintained `InterplanetaryFund` backend.
 
-See [MOBILE_BUILD.md](./MOBILE_BUILD.md) for full mobile build instructions.
+## Safety
 
-## Environment Variables
-
-```bash
-# .env.local (development)
-VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
-VITE_PAYPAL_BUSINESS_EMAIL=<optional>
-VITE_CASHAPP_CASHTAG=<optional>
-
-# Vercel (production) — set in dashboard or CLI
-VITE_CONVEX_URL=https://rosy-butterfly-2.convex.cloud
-
-# GitHub Actions (CI/CD) — set as repository secrets
-VITE_CONVEX_URL=<your-convex-url>
-CONVEX_DEPLOY_KEY=<your-convex-deploy-key>
-
-# Convex payment router env (set with `npx convex env set`)
-PAYPAL_BUSINESS_EMAIL=<paypal business email>
-CASHAPP_CASHTAG=<cash app cashtag without $>
-BITCOIN_DONATION_ADDRESS=<public btc receive address>
-BITCOIN_REQUIRED_CONFIRMATIONS=3
-BITCOIN_PAYMENT_EXPIRY_MINUTES=45
-BITCOIN_VERIFY_MAX_RETRIES=8
-BITCOIN_VERIFY_BASE_BACKOFF_SECONDS=30
-BTC_RATE_CACHE_TTL_SECONDS=300
-BLOCKCHAIN_API_BASE_URL=https://blockstream.info/api
-```
-
-## Unified Donation Payment Router
-
-- `convex/paymentRouter.ts` provides the unified donation intent and verification flow.
-- Implemented providers:
-  - **PayPal** (external checkout link, unified pending/confirmed ledger states)
-  - **Cash App** (external link/Cashtag flow, not auto-confirmed)
-  - **Bitcoin** (intent + address/URI + required-confirmation verification)
-- Not implemented in this repository:
-  - **Stripe** direct integration
-  - **PayPal webhook/IPN credentials setup**
-- Bitcoin verification is deterministic and server-side:
-  - destination-address check
-  - amount check
-  - confirmation count check
-  - duplicate tx-hash protection
-  - bounded retries with exponential backoff
-
-## Convex Backend
-
-8 tables, 7 agents, protocol enforcement (P-1 through P-8), treasury management, and scheduled crons.
-
-| File | Description |
-|------|-------------|
-| `convex/schema.ts` | Database schema (8 tables) |
-| `convex/agents.ts` | Agent CRUD, stats, training |
-| `convex/campaigns.ts` | Campaign sync, platforms |
-| `convex/treasury.ts` | Fees, payouts, balances |
-| `convex/protocol.ts` | P-1 through P-8 enforcement |
-| `convex/crons.ts` | Daily audit + weekly training |
-| `convex/seed.ts` | Initial data seeding |
-
-## Base44 Sync
-
-`base44-sync/syncConvexData.ts` — Backend function deployed on Base44 that syncs Convex data into Base44 entities. This allows the Base44-built APK to display live Convex data.
-
-Actions:
-- `sync_agents` — Sync 7 agents to Base44 Agent entity
-- `sync_campaigns` — Sync campaigns to Base44 MonitoredCampaign entity
-- `sync_treasury` — Fetch treasury balances and agent stats
-- `full_sync` — Sync everything at once
-
-## License
-
-MIT
+Do not delete this repository or its historical code until a capability-by-capability comparison confirms that every unique production-relevant capability has either been migrated or intentionally retired.
