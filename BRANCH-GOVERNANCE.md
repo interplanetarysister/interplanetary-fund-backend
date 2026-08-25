@@ -12,6 +12,8 @@ Interplanetary Fund uses `main` as the production source of truth.
 6. Production changes must retain the current React + Vite frontend, Convex backend, and Capacitor architecture.
 7. Payment, treasury, authentication, and agent-orchestration changes require explicit review before integration.
 8. Temporary verification branches must be reset/removed after verification so they cannot be mistaken for production candidates.
+9. When a branch is proven to contain no unique production value, reset it to current `main` rather than carrying stale commits forward.
+10. When a branch contains a useful change, first port that change onto a fresh branch from current `main`; only then retire/reset the source branch. Never delete unique work before its replacement is verified.
 
 ## Current audit disposition — 2026-08-25
 
@@ -20,3 +22,4 @@ Interplanetary Fund uses `main` as the production source of truth.
 - The old scrolling/data-access branch is divergent from current `main`; its useful work must only be ported selectively after comparison.
 - Vercel analytics/speed-insights branches were created from older commits and must not overwrite current production files.
 - Temporary verification branches created during the audit were reset to the current `main` commit and contain no unique production changes.
+- `copilot/check-alt-convex-urls` was verified to contain zero commits unique to its branch relative to current `main`; it is safe to retire/reset without losing production work.
