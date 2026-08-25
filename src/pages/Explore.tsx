@@ -13,6 +13,18 @@ const PRESET_AMOUNTS = [5, 10, 25, 50, 100];
 const MIN_AMOUNT = 1;
 
 type PaymentMethod = "cashapp" | "paypal" | "bitcoin";
+type PayPalDonationType = "one_time" | "monthly";
+
+type PayPalReturnReceipt = {
+  paymentReference: string;
+  providerTransactionId: string | null;
+  returnStatus: "success" | "cancel";
+  donationType: PayPalDonationType;
+};
+
+function mapPayPalConfirmationStatus(returnStatus: "success" | "cancel"): "confirmed" | "failed" {
+  return returnStatus === "success" ? "confirmed" : "failed";
+}
 
 export default function Explore() {
   // Paginated campaigns — loads 8 at a time, more on scroll
@@ -27,6 +39,7 @@ export default function Explore() {
   const paymentMethods = useQuery((api as any).paymentRouter.getAvailablePaymentMethods, {});
   const createDonationIntent = useMutation((api as any).paymentRouter.createDonationIntent);
   const verifyBitcoinDonation = useMutation((api as any).paymentRouter.verifyBitcoinDonation);
+  const confirmExternalDonation = useMutation((api as any).paymentRouter.confirmExternalDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
 
   const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
@@ -35,10 +48,19 @@ export default function Explore() {
   const [donationMessage, setDonationMessage] = useState("");
   const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done" | "bitcoin">("amount");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
+  const [paypalDonationType, setPaypalDonationType] = useState<PayPalDonationType>("one_time");
   const [viewedCampaigns, setViewedCampaigns] = useState<Set<string>>(new Set());
   const [intentResult, setIntentResult] = useState<any | null>(null);
   const [bitcoinQr, setBitcoinQr] = useState("");
   const [verificationResult, setVerificationResult] = useState<any | null>(null);
+  const [paypalReceipt, setPaypalReceipt] = useState<PayPalReturnReceipt | null>(null);
+  const [paypalReceiptResolved, setPaypalReceiptResolved] = useState(false);
+  const [paypalReceiptAttempted, setPaypalReceiptAttempted] = useState(false);
+  const [paypalReceiptError, setPaypalReceiptError] = useState<string | null>(null);
+  const receiptDonation = useQuery(
+    (api as any).paymentRouter.getDonationByPaymentReference,
+    paypalReceipt?.paymentReference ? { paymentReference: paypalReceipt.paymentReference } : "skip"
+  );
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
@@ -49,6 +71,52 @@ export default function Explore() {
       setPaymentMethod(firstAvailableMethod);
     }
   }, [paymentMethods, paymentMethod, firstAvailableMethod]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("if_provider") !== "paypal") return;
+    const paymentReference = params.get("if_ref");
+    if (!paymentReference) return;
+    const returnStatus = params.get("if_status") === "cancel" ? "cancel" : "success";
+    const donationType = params.get("if_type") === "monthly" ? "monthly" : "one_time";
+    const providerTransactionId = params.get("tx") || params.get("subscr_id");
+    setPaypalReceipt({
+      paymentReference,
+      providerTransactionId,
+      returnStatus,
+      donationType,
+    });
+    setPaypalReceiptResolved(false);
+    setPaypalReceiptAttempted(false);
+    setPaypalReceiptError(null);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
+  useEffect(() => {
+    if (!paypalReceipt || !receiptDonation || paypalReceiptResolved || paypalReceiptAttempted) return;
+    if (paypalReceipt.returnStatus === "cancel") {
+      setPaypalReceiptResolved(true);
+      return;
+    }
+    if (receiptDonation.status === "confirmed") {
+      setPaypalReceiptResolved(true);
+      return;
+    }
+
+    (async () => {
+      setPaypalReceiptAttempted(true);
+      try {
+        await confirmExternalDonation({
+          donationId: receiptDonation.donationId,
+          providerTransactionId: paypalReceipt.providerTransactionId || paypalReceipt.paymentReference,
+          status: mapPayPalConfirmationStatus(paypalReceipt.returnStatus),
+        });
+        setPaypalReceiptResolved(true);
+      } catch (error: any) {
+        setPaypalReceiptError(error?.message || "We could not verify this PayPal payment yet.");
+      }
+    })();
+  }, [confirmExternalDonation, paypalReceipt, paypalReceiptAttempted, paypalReceiptResolved, receiptDonation]);
 
   useEffect(() => {
     let cancelled = false;
@@ -117,6 +185,7 @@ export default function Explore() {
     setDonationMessage("");
     setIntentResult(null);
     setVerificationResult(null);
+    setPaypalDonationType("one_time");
     setDonationStep("amount");
   };
 
@@ -124,6 +193,7 @@ export default function Explore() {
     setSelectedCampaign(null);
     setIntentResult(null);
     setVerificationResult(null);
+    setPaypalDonationType("one_time");
     setDonationStep("amount");
   };
 
@@ -154,6 +224,7 @@ export default function Explore() {
     setDonationStep("processing");
     try {
       const idempotencyKey = `${selectedCampaign.ifCampaignId}:${paymentMethod}:${numericAmount.toFixed(2)}:${Date.now()}`;
+      const baseReturnUrl = `${window.location.origin}${window.location.pathname}`;
       const intent = await createDonationIntent({
         campaignId: selectedCampaign.ifCampaignId,
         campaignTitle: selectedCampaign.title,
@@ -161,7 +232,10 @@ export default function Explore() {
         donorName: donorName || undefined,
         message: donationMessage || undefined,
         paymentMethod,
+        donationType: paymentMethod === "paypal" ? paypalDonationType : "one_time",
         idempotencyKey,
+        successUrl: baseReturnUrl,
+        cancelUrl: baseReturnUrl,
       });
       setIntentResult(intent);
 
@@ -169,8 +243,7 @@ export default function Explore() {
         if (!intent?.checkout?.url) {
           throw new Error("PayPal checkout is not available right now.");
         }
-        window.open(intent.checkout.url, "_blank");
-        setDonationStep("done");
+        window.location.assign(intent.checkout.url);
         return;
       }
 
@@ -205,6 +278,45 @@ export default function Explore() {
 
   return (
     <div className="space-y-5">
+      {paypalReceipt && (
+        <div className="card border border-ifborder space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-iftext">
+                {paypalReceipt.returnStatus === "cancel" ? "PayPal checkout canceled" : "Donation receipt"}
+              </h3>
+              <p className="text-[11px] text-ifmuted">
+                {paypalReceipt.returnStatus === "cancel"
+                  ? "No payment was captured."
+                  : paypalReceiptResolved
+                    ? "Your PayPal payment has been recorded."
+                    : "Finalizing your donation..."}
+              </p>
+            </div>
+            <button
+              onClick={() => setPaypalReceipt(null)}
+              className="text-[11px] text-ifmuted hover:text-iftext"
+            >
+              Dismiss
+            </button>
+          </div>
+          <div className="text-[11px] text-ifmuted bg-ifborder rounded-xl p-3 space-y-1">
+            <p><span className="text-iftext font-semibold">Reference:</span> {paypalReceipt.paymentReference}</p>
+            <p><span className="text-iftext font-semibold">Campaign:</span> {receiptDonation?.campaignTitle || "Loading..."}</p>
+            <p><span className="text-iftext font-semibold">Amount:</span> {receiptDonation ? `$${receiptDonation.amount.toFixed(2)}` : "Loading..."}</p>
+            <p><span className="text-iftext font-semibold">Donor:</span> {receiptDonation?.donorName || "Loading..."}</p>
+            <p><span className="text-iftext font-semibold">Type:</span> {paypalReceipt.donationType === "monthly" ? "Monthly recurring" : "One-time"}</p>
+            <p><span className="text-iftext font-semibold">Status:</span> {receiptDonation?.status || (paypalReceipt.returnStatus === "cancel" ? "canceled" : "processing")}</p>
+            {receiptDonation?.cleared ? (
+              <p><span className="text-iftext font-semibold">Cleared:</span> Yes</p>
+            ) : null}
+          </div>
+          {paypalReceiptError && (
+            <p className="text-[11px] text-red-400">{paypalReceiptError}</p>
+          )}
+        </div>
+      )}
+
       {/* Hero Banner */}
       <div className="rounded-2xl bg-gradient-to-br from-ifaccent/20 to-ifcyan/10 border border-ifborder p-5">
         <h2 className="text-xl font-bold text-iftext">Together we can</h2>
@@ -498,6 +610,30 @@ export default function Explore() {
                         ? "Opens CashApp — external link flow (not auto-confirmed)."
                         : "Shows Bitcoin address + QR and confirms on-chain after required confirmations."}
                   </p>
+                  {paymentMethod === "paypal" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setPaypalDonationType("one_time")}
+                        className={`py-2 rounded-xl border text-xs font-semibold ${
+                          paypalDonationType === "one_time"
+                            ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
+                            : "border-ifborder text-ifmuted"
+                        }`}
+                      >
+                        One-time
+                      </button>
+                      <button
+                        onClick={() => setPaypalDonationType("monthly")}
+                        className={`py-2 rounded-xl border text-xs font-semibold ${
+                          paypalDonationType === "monthly"
+                            ? "border-[#0070ba] bg-[#0070ba]/10 text-[#0070ba]"
+                            : "border-ifborder text-ifmuted"
+                        }`}
+                      >
+                        Monthly
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={handleCompleteDonation}
                     className={`w-full py-3 rounded-xl text-white text-sm font-semibold active:scale-[0.98] transition-transform ${
@@ -508,7 +644,7 @@ export default function Explore() {
                           : "bg-ifamber hover:opacity-90"
                     }`}
                   >
-                    Donate ${numericAmount.toLocaleString()} via {paymentMethod === "paypal" ? "PayPal" : paymentMethod === "cashapp" ? "CashApp" : "Bitcoin"}
+                    {paymentMethod === "paypal" && paypalDonationType === "monthly" ? "Start monthly donation" : `Donate $${numericAmount.toLocaleString()}`} via {paymentMethod === "paypal" ? "PayPal" : paymentMethod === "cashapp" ? "CashApp" : "Bitcoin"}
                   </button>
                 </div>
               </>
