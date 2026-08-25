@@ -6,32 +6,15 @@
 
 import { mutation } from "./_generated/server";
 
-/**
- * A platform URL is considered publishable only when it is a real HTTP(S)
- * URL with a hostname. Never treat short/test strings as connected accounts.
- */
+/** A publishable platform URL must be a real HTTP(S) URL with a hostname. */
 function isPlaceholderOrInvalidUrl(value: string | undefined): boolean {
   const url = (value ?? "").trim();
   if (!url) return true;
 
   const normalized = url.toLowerCase();
   const knownPlaceholders = new Set([
-    "f",
-    "h",
-    "d",
-    "jjj",
-    "test",
-    "testing",
-    "example",
-    "placeholder",
-    "todo",
-    "tbd",
-    "n/a",
-    "na",
-    "none",
-    "null",
-    "undefined",
-    "localhost",
+    "f", "h", "d", "jjj", "test", "testing", "example", "placeholder",
+    "todo", "tbd", "n/a", "na", "none", "null", "undefined", "localhost",
   ]);
 
   if (knownPlaceholders.has(normalized)) return true;
@@ -41,13 +24,15 @@ function isPlaceholderOrInvalidUrl(value: string | undefined): boolean {
 
   try {
     const parsed = new URL(url);
-    return parsed.protocol !== "http:" && parsed.protocol !== "https:";
+    return (
+      (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+      !parsed.hostname
+    );
   } catch {
     return true;
   }
 }
 
-// Clean up placeholder/test URLs in external platform connections.
 // Invalid connections remain draft and are never eligible for publishing.
 export const cleanupPlaceholderUrls = mutation({
   args: {},
@@ -58,10 +43,7 @@ export const cleanupPlaceholderUrls = mutation({
     for (const platform of platforms) {
       const url = platform.externalUrl?.trim() ?? "";
       if (isPlaceholderOrInvalidUrl(url)) {
-        await ctx.db.patch(platform._id, {
-          externalUrl: "",
-          status: "draft",
-        });
+        await ctx.db.patch(platform._id, { externalUrl: "", status: "draft" });
         cleaned.push({
           id: platform._id,
           platform: platform.platformName,
@@ -80,7 +62,7 @@ export const cleanupPlaceholderUrls = mutation({
   },
 });
 
-// Fix platform statuses — only valid URLs may remain publishable.
+// Only valid HTTP(S) platform URLs may remain publishable.
 export const fixPlatformStatuses = mutation({
   args: {},
   handler: async (ctx) => {
@@ -89,9 +71,7 @@ export const fixPlatformStatuses = mutation({
 
     for (const platform of platforms) {
       if (isPlaceholderOrInvalidUrl(platform.externalUrl)) {
-        await ctx.db.patch(platform._id, {
-          status: "draft",
-        });
+        await ctx.db.patch(platform._id, { status: "draft" });
         fixed.push({
           platform: platform.platformName,
           campaign: platform.campaignId,
