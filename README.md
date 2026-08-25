@@ -1,32 +1,48 @@
-# Interplanetary Fund — Legacy Backend Snapshot
+# Interplanetary Fund Backend
 
-> **Repository status: LEGACY / REFERENCE ONLY**
->
-> This repository is no longer the canonical production backend for Interplanetary Fund.
+**Purpose: Backend**
 
-## Canonical repositories
+Authoritative backend and operations system for the single Interplanetary Fund product.
 
-- **Application:** `interplanetarysister/interplanetary-fund2`
-- **Authoritative backend / agent runtime:** `interplanetarysister/InterplanetaryFund`
+## Product Build Contract
 
-The canonical backend repository is the actively maintained Convex system and is the source of truth for agents, persistent agent memory, campaigns, protocol enforcement, treasury, payments, scheduled jobs, and platform intelligence.
+Interplanetary Fund is **one cohesive product implemented across coordinated repositories**. Repositories are implementation boundaries, not separate products.
 
-The Base44-linked application remains in `interplanetary-fund2`. It is the user-facing application layer and communicates with the canonical Convex backend through explicit integration boundaries.
+### Repository purposes
 
-## Why this repository is retained
+| Repository | Purpose | Authority |
+|---|---|---|
+| `interplanetarysister/InterplanetaryFund` | **Frontend** | User-facing React/Vite application |
+| `interplanetarysister/interplanetary-fund-backend` | **Backend** | Backend, admin, agents, security, treasury, operations |
+| `interplanetarysister/interplanetary-fund` | **Migration** | Historical/reference source until every unique capability is reconciled |
 
-This repository contains an important historical implementation of the Convex backend, payment router, crowdfunding migration work, mobile build work, and earlier Base44 synchronization architecture. It is retained so that functionality can be audited, migrated, or recovered without losing project history.
+### Build-agent rule
 
-**Do not add new production features here.** New backend functionality should be implemented in `InterplanetaryFund` and reviewed/merged there.
+Every build agent, workflow, Copilot/Codex task, and human implementation must treat the three repositories as **one product**. Before changing code, identify the repository purpose and determine whether the capability is frontend-only, backend/operations-only, or cross-repository.
 
-## Migration rule
+For cross-repository work, implement and verify the complete capability across all affected repositories. Do not create competing production sources of truth.
 
-If functionality exists here but not in the canonical backend, first compare the implementations and migrate the capability into `InterplanetaryFund` through a repository-local feature branch and review. Do not make `interplanetary-fund-backend` a second production source of truth.
+Live campaigns, users, donations, permissions, agent state, administrative state, and other business entities must retain one canonical live identity in this authoritative backend. Frontend and admin surfaces consume this canonical state; they must not create competing production stores.
 
-## Historical architecture
+### This repository owns
 
-This repository previously described itself as a full-stack React/Convex application and included Convex agent CRUD, campaign synchronization, treasury management, protocol enforcement, scheduled jobs, and Base44 synchronization. Those files remain valuable as migration/reference material, but the repository has been superseded by the actively maintained `InterplanetaryFund` backend.
+- Canonical backend services and data access
+- Convex functions and shared business logic
+- Admin cockpit and monitoring
+- Agent runtime, orchestration, memory, and scheduling
+- Security, fraud controls, protocol enforcement
+- Treasury, payments, fees, payouts, and financial operations
+- Scheduled jobs and operational integrations
+- Backend-facing contracts consumed by the authoritative frontend
 
-## Safety
+### This repository does not independently own
 
-Do not delete this repository or its historical code until a capability-by-capability comparison confirms that every unique production-relevant capability has either been migrated or intentionally retired.
+The user-facing frontend implementation. That belongs to `InterplanetaryFund`.
+
+`interplanetary-fund` remains migration/reference material and must not become a second production backend.
+
+## Release Rule
+
+A backend change is production-complete only after affected frontend consumers, contracts, permissions, environment configuration, operational monitoring, and end-to-end flows have been verified. A successful Git push alone is not a complete product release.
+
+See `PRODUCT_SYSTEM_CONTRACT.md` and `CANONICAL_REPO_TRANSITION.md` for authoritative rules.
