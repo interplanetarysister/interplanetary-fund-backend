@@ -361,11 +361,10 @@ html {
   width: 100%;
 }
 
-/* Ensure main content area scrolls properly on all devices */
+/* Keep the document as the primary vertical scroll container */
 main {
-  overflow-y: visible;
-  overflow-x: hidden;
   width: 100%;
+  max-width: 100%;
 }
 
 /* Don't constrain width on very small screens */
