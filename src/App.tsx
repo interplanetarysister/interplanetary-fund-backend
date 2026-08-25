@@ -8,6 +8,7 @@ import { TermsAcceptance } from "./components/TermsAcceptance";
 import { useState, useMemo, useCallback, lazy, Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 
 // Lazy load pages
 const Explore = lazy(() => import("./pages/Explore"));
@@ -97,6 +98,7 @@ export default function App() {
 
   return (
     <TermsAcceptance>
+    <>
     <div className="min-h-screen bg-ifdark flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-ifdark/95 backdrop-blur border-b border-ifborder">
@@ -165,6 +167,8 @@ export default function App() {
         </nav>
       )}
     </div>
+    <SpeedInsights />
+    </>
     </TermsAcceptance>
   );
 }
