@@ -4,20 +4,60 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { mutation, query } from "./_generated/server";
-import { v } from "convex/values";
+import { mutation } from "./_generated/server";
 
-// Clean up placeholder/test URLs in external platform connections
+/**
+ * A platform URL is considered publishable only when it is a real HTTP(S)
+ * URL with a hostname. Never treat short/test strings as connected accounts.
+ */
+function isPlaceholderOrInvalidUrl(value: string | undefined): boolean {
+  const url = (value ?? "").trim();
+  if (!url) return true;
+
+  const normalized = url.toLowerCase();
+  const knownPlaceholders = new Set([
+    "f",
+    "h",
+    "d",
+    "jjj",
+    "test",
+    "testing",
+    "example",
+    "placeholder",
+    "todo",
+    "tbd",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    "undefined",
+    "localhost",
+  ]);
+
+  if (knownPlaceholders.has(normalized)) return true;
+  if (normalized.includes("placeholder") || normalized.includes("example.com")) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol !== "http:" && parsed.protocol !== "https:";
+  } catch {
+    return true;
+  }
+}
+
+// Clean up placeholder/test URLs in external platform connections.
+// Invalid connections remain draft and are never eligible for publishing.
 export const cleanupPlaceholderUrls = mutation({
   args: {},
   handler: async (ctx) => {
     const platforms = await ctx.db.query("externalPlatforms").collect();
-    
-    const placeholders = ["F", "H", "D", "Jjj", ""];
     const cleaned = [];
-    
+
     for (const platform of platforms) {
-      if (placeholders.includes(platform.externalUrl) || !platform.externalUrl) {
+      const url = platform.externalUrl?.trim() ?? "";
+      if (isPlaceholderOrInvalidUrl(url)) {
         await ctx.db.patch(platform._id, {
           externalUrl: "",
           status: "draft",
@@ -25,40 +65,41 @@ export const cleanupPlaceholderUrls = mutation({
         cleaned.push({
           id: platform._id,
           platform: platform.platformName,
-          oldUrl: platform.externalUrl,
+          oldUrl: url,
           status: "draft",
         });
       }
     }
-    
+
     return {
       status: "success",
+      platformsChecked: platforms.length,
       platformsCleaned: cleaned.length,
       details: cleaned,
     };
   },
 });
 
-// Fix all platform statuses — mark unverified ones as draft
+// Fix platform statuses — only valid URLs may remain publishable.
 export const fixPlatformStatuses = mutation({
   args: {},
   handler: async (ctx) => {
     const platforms = await ctx.db.query("externalPlatforms").collect();
-    
     const fixed = [];
+
     for (const platform of platforms) {
-      if (!platform.externalUrl || platform.externalUrl.length < 10) {
+      if (isPlaceholderOrInvalidUrl(platform.externalUrl)) {
         await ctx.db.patch(platform._id, {
           status: "draft",
         });
         fixed.push({
           platform: platform.platformName,
           campaign: platform.campaignId,
-          reason: "Invalid URL",
+          reason: "Missing, placeholder, or invalid HTTP(S) URL",
         });
       }
     }
-    
+
     return { status: "success", fixed: fixed.length, details: fixed };
   },
 });
