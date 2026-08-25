@@ -22,6 +22,7 @@
     "@capacitor/core": "^6.1.0",
     "@capacitor/ios": "^6.1.0",
     "@capacitor/splash-screen": "^6.0.0",
+    "@vercel/speed-insights": "^2.0.0",
     "convex": "^1.43.0",
     "globe.gl": "^2.46.1",
     "qrcode": "^1.5.4",
