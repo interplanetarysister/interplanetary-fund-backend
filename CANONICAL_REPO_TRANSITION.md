@@ -1,26 +1,35 @@
 # Canonical Repository Transition
 
-## Decision
+## Current production decision — August 25, 2026
 
-As of August 21, 2026, Interplanetary Fund uses a two-repository production architecture:
+Interplanetary Fund is one cohesive product with multiple coordinated repositories.
 
-1. `interplanetarysister/interplanetary-fund2` — user-facing Base44 application.
-2. `interplanetarysister/InterplanetaryFund` — authoritative Convex backend and agent runtime.
+### Canonical production repositories
 
-This repository, `interplanetary-fund-backend`, is retained as a legacy/reference snapshot.
+1. `interplanetarysister/InterplanetaryFund` — authoritative user-facing React/Vite frontend.
+2. `interplanetarysister/interplanetary-fund-backend` — authoritative backend, admin monitoring, agent runtime, security, treasury, scheduled jobs, and operational infrastructure.
+
+### Migration/reference repository
+
+`interplanetarysister/interplanetary-fund` is a migration/reference source. It may contain capabilities that have not yet been reconciled into the canonical repositories. It is not an independent production product.
 
 ## Source-of-truth rules
 
-- Production backend changes belong in `InterplanetaryFund`.
-- Production application changes belong in `interplanetary-fund2`.
-- A PR must target the same repository that owns the change.
-- Cross-repository integration happens through explicit APIs/bridges, never by merging one repository's PR into another.
-- Historical code in this repository may be migrated only after capability comparison and review.
+- The frontend source of truth is `InterplanetaryFund`.
+- Backend and operations source of truth is `interplanetary-fund-backend`.
+- Live campaign/user/donation/business state has one canonical backend source of truth and is never split by repository.
+- Cross-repository behavior is integrated through explicit APIs/shared backend contracts, not by treating repositories as separate products.
+- Historical code may be migrated after capability comparison and compatibility review.
+- Secrets and credentials are never copied as source files during migration.
 
-## Agent system
+## Campaign invariant
 
-The authoritative persistent agent state and memory live in the canonical Convex backend. The application may display or submit interactions to that backend, but it must not create a competing production source of truth.
+A campaign created or changed from any authorized product surface retains one stable campaign ID and resolves to the same canonical live record. The user frontend, admin cockpit, agents, analytics, payment/treasury services, and integrations must converge on that record.
+
+## Release rule
+
+A feature is complete only when every affected canonical repository, contract, permission boundary, deployment configuration, and operational consumer is compatible and the end-to-end behavior is verified.
 
 ## Retirement policy
 
-Do not delete this repository until a capability audit confirms that all unique production-relevant functionality has been migrated or intentionally retired.
+Do not delete or archive `interplanetary-fund` until a capability audit confirms every unique production-relevant capability has either been migrated into the canonical repositories or explicitly retired.
