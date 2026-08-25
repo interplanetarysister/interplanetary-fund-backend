@@ -8,6 +8,7 @@ import { TermsAcceptance } from "./components/TermsAcceptance";
 import { useState, useMemo, useCallback, lazy, Suspense } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { Analytics } from "@vercel/analytics/react";
 
 // Lazy load pages
 const Explore = lazy(() => import("./pages/Explore"));
@@ -165,6 +166,7 @@ export default function App() {
         </nav>
       )}
     </div>
+    <Analytics />
     </TermsAcceptance>
   );
 }
