@@ -301,13 +301,18 @@ export const createDonationIntent = mutation({
       paypalUrl.searchParams.set("currency_code", "USD");
       paypalUrl.searchParams.set("custom", paymentReference);
       if (args.returnUrlBase) {
-        const successUrl = new URL(args.returnUrlBase);
+        const baseReturnUrl = new URL(args.returnUrlBase);
+        if (baseReturnUrl.protocol !== "https:" && baseReturnUrl.protocol !== "http:") {
+          throw new Error("Invalid returnUrlBase. Must be an http(s) URL.");
+        }
+
+        const successUrl = new URL(baseReturnUrl.toString());
         successUrl.searchParams.set("donation", "success");
         successUrl.searchParams.set("if_ref", paymentReference);
         successUrl.searchParams.set("campaignId", args.campaignId);
         paypalUrl.searchParams.set("return", successUrl.toString());
 
-        const cancelUrl = new URL(args.returnUrlBase);
+        const cancelUrl = new URL(baseReturnUrl.toString());
         cancelUrl.searchParams.set("campaignId", args.campaignId);
         paypalUrl.searchParams.set("cancel_return", cancelUrl.toString());
       }
