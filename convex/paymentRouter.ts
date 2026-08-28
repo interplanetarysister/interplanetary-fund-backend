@@ -67,7 +67,7 @@ async function calculateNetDonationAmount(ctx: any, amount: number): Promise<Fee
     platformFee,
     processingFee,
     totalFees,
-    netAmount: amount - totalFees,
+    netAmount: Math.max(0, amount - totalFees),
   };
 }
 
