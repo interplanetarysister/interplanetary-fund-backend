@@ -4,31 +4,40 @@ const lifecycle = readFileSync("convex/campaignLifecycleInternal.ts", "utf8");
 const crons = readFileSync("convex/crons.ts", "utf8");
 const campaigns = readFileSync("convex/campaigns.ts", "utf8");
 
-const required = [
-  ["internal-only mutation", /internalMutation\(\{/],
-  ["terminal status mapping", /closed:\s*"campaign_closed"[\s\S]*finished:\s*"campaign_finished"[\s\S]*deleted:\s*"campaign_deleted"/],
-  ["indexed campaign pagination", /withIndex\("byStatus"[\s\S]*\.paginate\(/],
-  ["bounded campaign page", /CAMPAIGN_PAGE_SIZE\s*=\s*25/],
-  ["bounded listing reads", /\.take\(LISTING_PAGE_SIZE\)/],
-  ["bounded distributed post cleanup", /\.take\(POST_DELETE_BATCH_SIZE\)/],
-  ["bounded facebook post cleanup", /facebookGroupPosts[\s\S]*\.take\(POST_DELETE_BATCH_SIZE\)/],
-  ["24-hour lifecycle cron", /daily-campaign-lifecycle-sync[\s\S]*hourUTC: 17, minuteUTC: 23/],
-  ["durable continuation", /ctx\.scheduler\.runAfter\(0, internal\.campaignLifecycleInternal\.syncCampaignLifecycle/],
-  ["closed-to-finished chain", /status:\s*"finished"/],
-  ["finished-to-deleted chain", /status:\s*"deleted"/],
-  ["donation preservation", /paymentActive:\s*true/],
-  ["30-day retention", /30 \* 24 \* 60 \* 60 \* 1000/],
-  ["no unbounded campaign collect", !/monitoredCampaigns[\s\S]*\.collect\(/],
-  ["no unbounded distributed-post collect", !/distributedPosts[\s\S]*\.collect\(/],
-  ["no unbounded facebook-post collect", !/facebookGroupPosts[\s\S]*\.collect\(/],
-  ["current sync keeps payment active", /outreachEnabled:\s*true,\s*paymentActive:\s*true/],
-];
-
 const failures = [];
-for (const [label, rule] of required) {
-  const pass = rule instanceof RegExp ? rule.test(rule === null ? "" : (label.includes("current sync") ? campaigns : lifecycle + "\n" + crons)) : rule;
-  if (!pass) failures.push(label);
+
+function requireText(label, source, pattern) {
+  if (!pattern.test(source)) failures.push(label);
 }
+
+function requireAbsent(label, source, pattern) {
+  if (pattern.test(source)) failures.push(label);
+}
+
+requireText("internal-only mutation", lifecycle, /internalMutation\(\{/);
+requireText(
+  "terminal status mapping",
+  lifecycle,
+  /closed:\s*"campaign_closed"[\s\S]*finished:\s*"campaign_finished"[\s\S]*deleted:\s*"campaign_deleted"/,
+);
+requireText("indexed campaign pagination", lifecycle, /withIndex\("byStatus"[\s\S]*\.paginate\(/);
+requireText("bounded campaign page", lifecycle, /CAMPAIGN_PAGE_SIZE\s*=\s*25/);
+requireText("bounded listing reads", lifecycle, /\.take\(LISTING_PAGE_SIZE\)/);
+requireText("bounded distributed post cleanup", lifecycle, /distributedPosts[\s\S]*\.take\(POST_DELETE_BATCH_SIZE\)/);
+requireText("bounded facebook post cleanup", lifecycle, /facebookGroupPosts[\s\S]*\.take\(POST_DELETE_BATCH_SIZE\)/);
+requireText("durable continuation", lifecycle, /ctx\.scheduler\.runAfter\(0, internal\.campaignLifecycleInternal\.syncCampaignLifecycle/);
+requireText("closed-to-finished chain", lifecycle, /status:\s*"finished"/);
+requireText("finished-to-deleted chain", lifecycle, /status:\s*"deleted"/);
+requireText("donation preservation", lifecycle, /paymentActive:\s*true/);
+requireText("30-day retention", lifecycle, /30 \* 24 \* 60 \* 60 \* 1000/);
+requireText("off-peak lifecycle cron", crons, /daily-campaign-lifecycle-sync[\s\S]*hourUTC: 17, minuteUTC: 23/);
+requireText("lifecycle cron starts closed phase", crons, /daily-campaign-lifecycle-sync[\s\S]*status:\s*"closed"/);
+requireText("current campaign sync keeps payment active", campaigns, /outreachEnabled:\s*true,\s*paymentActive:\s*true/);
+requireAbsent("unbounded campaign collect", lifecycle, /monitoredCampaigns[\s\S]*\.collect\(/);
+requireAbsent("unbounded distributed-post collect", lifecycle, /distributedPosts[\s\S]*\.collect\(/);
+requireAbsent("unbounded facebook-post collect", lifecycle, /facebookGroupPosts[\s\S]*\.collect\(/);
+requireAbsent("public mutation", lifecycle, /export const syncCampaignLifecycle\s*=\s*mutation\(/);
+requireAbsent("external network access", lifecycle, /\bfetch\s*\(/);
 
 if (failures.length) {
   console.error("Issue #16 lifecycle verification failed:");
@@ -37,4 +46,4 @@ if (failures.length) {
 }
 
 console.log("Issue #16 lifecycle verification passed.");
-console.log("Verified: internal-only bounded pagination, explicit status mapping, durable cursor continuation, donation preservation, and 30-day bounded cleanup.");
+console.log("Verified: internal-only bounded pagination, explicit terminal mapping, durable cursor continuation, donation preservation, off-peak scheduling, and bounded 30-day cleanup.");
