@@ -14,7 +14,7 @@ const TERMINAL_STATUSES = {
   deleted: "campaign_deleted",
 } as const;
 
-const CAMPAIGN_PAGE_SIZE = 25;
+const CAMPAIGN_PAGE_SIZE = 1;
 const LISTING_PAGE_SIZE = 100;
 const POST_DELETE_BATCH_SIZE = 100;
 const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -34,10 +34,12 @@ function isAtLeastRetentionAge(isoDate: string | undefined, nowMs: number): bool
 /**
  * Bounded, resumable lifecycle worker for terminal campaigns.
  *
- * The cron starts one cursor chain. Every transaction reads one indexed page of
- * campaigns and bounded child records, then schedules the next page only after
- * the current transaction commits. Child cursors are carried independently so
- * campaigns with more than 100 listings/posts converge across transactions.
+ * The cron starts one cursor chain. Each transaction handles one campaign and
+ * one bounded child page, then schedules continuation only after the current
+ * transaction commits. Child cursors are carried independently so campaigns
+ * with more than 100 listings/posts converge across transactions. Processing
+ * one campaign at a time also keeps the campaign cursor unambiguous when a
+ * child collection requires continuation.
  *
  * No external API is called here. The worker only performs deterministic Convex
  * reads/writes and is internal-only. Payment remains enabled for terminal
@@ -75,70 +77,91 @@ export const syncCampaignLifecycle = internalMutation({
         maximumRowsRead: CAMPAIGN_PAGE_SIZE,
       });
 
-    let campaignsProcessed = 0;
-    let listingsUpdated = 0;
-    let campaignsReopenedForDonations = 0;
-    let distributedPostsDeleted = 0;
-    let facebookPostsDeleted = 0;
-
-    for (const campaign of page.page) {
-      if (args.campaignId && campaign.ifCampaignId !== args.campaignId) continue;
-      campaignsProcessed += 1;
-
-      // Terminal campaigns must remain donation-capable. Only repair the field
-      // when it is actually false, avoiding an unnecessary write on every pass.
-      // Do not mutate lastSynced: it is the deletion-retention lower bound.
-      if (!campaign.paymentActive) {
-        await ctx.db.patch(campaign._id, {
-          paymentActive: true,
-        });
-        campaignsReopenedForDonations += 1;
-      }
-
-      const listingsPage = await ctx.db
-        .query("externalPlatforms")
-        .withIndex("byCampaignId", (q) => q.eq("campaignId", campaign.ifCampaignId))
-        .paginate({
-          numItems: LISTING_PAGE_SIZE,
-          cursor: args.listingCursor ?? null,
-          maximumRowsRead: LISTING_PAGE_SIZE,
-        });
-
-      for (const listing of listingsPage.page) {
-        if (listing.status === listingStatus) continue;
-
-        await ctx.db.patch(listing._id, {
-          status: listingStatus,
-          lastSynced: nowIso,
-        });
-        listingsUpdated += 1;
-      }
-
-      if (!listingsPage.isDone) {
+    const campaign = page.page[0];
+    if (!campaign) {
+      if (args.status === "closed") {
         await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
-          status: args.status,
-          cursor: args.cursor,
-          campaignId: campaign.ifCampaignId,
-          listingCursor: listingsPage.continueCursor,
+          status: "finished",
         });
-        return {
-          status: "success",
-          lifecycleStatus: args.status,
-          campaignsProcessed,
-          listingsUpdated,
-          campaignsReopenedForDonations,
-          distributedPostsDeleted,
-          facebookPostsDeleted,
-          isDone: false,
-          continueCursor: listingsPage.continueCursor,
-          executedAt: nowIso,
-        };
+      } else if (args.status === "finished") {
+        await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
+          status: "deleted",
+        });
       }
+      return {
+        status: "success",
+        lifecycleStatus: args.status,
+        campaignsProcessed: 0,
+        listingsUpdated: 0,
+        campaignsReopenedForDonations: 0,
+        distributedPostsDeleted: 0,
+        facebookPostsDeleted: 0,
+        isDone: true,
+        continueCursor: null,
+        executedAt: nowIso,
+      };
+    }
 
-      if (args.status !== "deleted" || !isAtLeastRetentionAge(campaign.lastSynced, nowMs)) {
-        continue;
-      }
+    // A child continuation identifies the exact campaign being resumed. The
+    // campaign page is deliberately one row so the next campaign cursor never
+    // skips siblings in the same page.
+    if (args.campaignId && campaign.ifCampaignId !== args.campaignId) {
+      throw new Error("Lifecycle child cursor does not match campaign cursor");
+    }
 
+    // Terminal campaigns must remain donation-capable. Only repair the field
+    // when it is actually false, avoiding an unnecessary write on every pass.
+    // Do not mutate lastSynced: it is the deletion-retention lower bound.
+    let campaignsReopenedForDonations = 0;
+    if (!campaign.paymentActive) {
+      await ctx.db.patch(campaign._id, {
+        paymentActive: true,
+      });
+      campaignsReopenedForDonations += 1;
+    }
+
+    const listingsPage = await ctx.db
+      .query("externalPlatforms")
+      .withIndex("byCampaignId", (q) => q.eq("campaignId", campaign.ifCampaignId))
+      .paginate({
+        numItems: LISTING_PAGE_SIZE,
+        cursor: args.listingCursor ?? null,
+        maximumRowsRead: LISTING_PAGE_SIZE,
+      });
+
+    let listingsUpdated = 0;
+    for (const listing of listingsPage.page) {
+      if (listing.status === listingStatus) continue;
+
+      await ctx.db.patch(listing._id, {
+        status: listingStatus,
+        lastSynced: nowIso,
+      });
+      listingsUpdated += 1;
+    }
+
+    if (!listingsPage.isDone) {
+      await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
+        status: args.status,
+        cursor: args.cursor,
+        campaignId: campaign.ifCampaignId,
+        listingCursor: listingsPage.continueCursor,
+      });
+      return {
+        status: "success",
+        lifecycleStatus: args.status,
+        campaignsProcessed: 1,
+        listingsUpdated,
+        campaignsReopenedForDonations,
+        distributedPostsDeleted: 0,
+        facebookPostsDeleted: 0,
+        isDone: false,
+        continueCursor: listingsPage.continueCursor,
+        executedAt: nowIso,
+      };
+    }
+
+    if (args.status === "deleted" && isAtLeastRetentionAge(campaign.lastSynced, nowMs)) {
       const distributedPostsPage = await ctx.db
         .query("distributedPosts")
         .withIndex("byCampaignId", (q) => q.eq("campaignId", campaign.ifCampaignId))
@@ -149,7 +172,6 @@ export const syncCampaignLifecycle = internalMutation({
         });
       for (const post of distributedPostsPage.page) {
         await ctx.db.delete(post._id);
-        distributedPostsDeleted += 1;
       }
 
       if (!distributedPostsPage.isDone) {
@@ -162,11 +184,11 @@ export const syncCampaignLifecycle = internalMutation({
         return {
           status: "success",
           lifecycleStatus: args.status,
-          campaignsProcessed,
+          campaignsProcessed: 1,
           listingsUpdated,
           campaignsReopenedForDonations,
-          distributedPostsDeleted,
-          facebookPostsDeleted,
+          distributedPostsDeleted: distributedPostsPage.page.length,
+          facebookPostsDeleted: 0,
           isDone: false,
           continueCursor: distributedPostsPage.continueCursor,
           executedAt: nowIso,
@@ -183,7 +205,6 @@ export const syncCampaignLifecycle = internalMutation({
         });
       for (const post of facebookPostsPage.page) {
         await ctx.db.delete(post._id);
-        facebookPostsDeleted += 1;
       }
 
       if (!facebookPostsPage.isDone) {
@@ -196,22 +217,47 @@ export const syncCampaignLifecycle = internalMutation({
         return {
           status: "success",
           lifecycleStatus: args.status,
-          campaignsProcessed,
+          campaignsProcessed: 1,
           listingsUpdated,
           campaignsReopenedForDonations,
-          distributedPostsDeleted,
-          facebookPostsDeleted,
+          distributedPostsDeleted: distributedPostsPage.page.length,
+          facebookPostsDeleted: facebookPostsPage.page.length,
           isDone: false,
           continueCursor: facebookPostsPage.continueCursor,
           executedAt: nowIso,
         };
       }
+
+      const distributedPostsDeleted = distributedPostsPage.page.length;
+      const facebookPostsDeleted = facebookPostsPage.page.length;
+      if (!page.isDone) {
+        await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
+          status: args.status,
+          cursor: page.continueCursor,
+        });
+      } else if (args.status === "closed") {
+        await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
+          status: "finished",
+        });
+      } else if (args.status === "finished") {
+        await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
+          status: "deleted",
+        });
+      }
+      return {
+        status: "success",
+        lifecycleStatus: args.status,
+        campaignsProcessed: 1,
+        listingsUpdated,
+        campaignsReopenedForDonations,
+        distributedPostsDeleted,
+        facebookPostsDeleted,
+        isDone: page.isDone,
+        continueCursor: page.isDone ? null : page.continueCursor,
+        executedAt: nowIso,
+      };
     }
 
-    // Continue the same indexed campaign page only after this transaction has
-    // committed. Then advance to the next terminal status. Child cursors are
-    // reset whenever a child collection finishes so they never leak across
-    // campaigns.
     if (!page.isDone) {
       await ctx.scheduler.runAfter(0, internal.campaignLifecycleInternal.syncCampaignLifecycle, {
         status: args.status,
@@ -230,11 +276,11 @@ export const syncCampaignLifecycle = internalMutation({
     return {
       status: "success",
       lifecycleStatus: args.status,
-      campaignsProcessed,
+      campaignsProcessed: 1,
       listingsUpdated,
       campaignsReopenedForDonations,
-      distributedPostsDeleted,
-      facebookPostsDeleted,
+      distributedPostsDeleted: 0,
+      facebookPostsDeleted: 0,
       isDone: page.isDone,
       continueCursor: page.isDone ? null : page.continueCursor,
       executedAt: nowIso,
