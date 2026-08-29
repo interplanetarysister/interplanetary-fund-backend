@@ -21,14 +21,18 @@ requireText(
   /closed:\s*"campaign_closed"[\s\S]*finished:\s*"campaign_finished"[\s\S]*deleted:\s*"campaign_deleted"/,
 );
 requireText("indexed campaign pagination", lifecycle, /withIndex\("byStatus"[\s\S]*\.paginate\(/);
-requireText("bounded campaign page", lifecycle, /CAMPAIGN_PAGE_SIZE\s*=\s*25/);
-requireText("bounded listing reads", lifecycle, /\.take\(LISTING_PAGE_SIZE\)/);
-requireText("bounded distributed post cleanup", lifecycle, /distributedPosts[\s\S]*\.take\(POST_DELETE_BATCH_SIZE\)/);
-requireText("bounded facebook post cleanup", lifecycle, /facebookGroupPosts[\s\S]*\.take\(POST_DELETE_BATCH_SIZE\)/);
+requireText("bounded campaign page", lifecycle, /CAMPAIGN_PAGE_SIZE\s*=\s*1/);
+requireText("bounded listing reads", lifecycle, /\.paginate\(\{[\s\S]*numItems:\s*LISTING_PAGE_SIZE/);
+requireText("listing cursor continuation", lifecycle, /listingCursor:\s*listingsPage\.continueCursor/);
+requireText("bounded distributed post cleanup", lifecycle, /distributedPosts[\s\S]*\.paginate\(\{[\s\S]*numItems:\s*POST_DELETE_BATCH_SIZE/);
+requireText("distributed post cursor continuation", lifecycle, /distributedPostCursor:\s*distributedPostsPage\.continueCursor/);
+requireText("bounded facebook post cleanup", lifecycle, /facebookGroupPosts[\s\S]*\.paginate\(\{[\s\S]*numItems:\s*POST_DELETE_BATCH_SIZE/);
+requireText("facebook post cursor continuation", lifecycle, /facebookPostCursor:\s*facebookPostsPage\.continueCursor/);
 requireText("durable continuation", lifecycle, /ctx\.scheduler\.runAfter\(0, internal\.campaignLifecycleInternal\.syncCampaignLifecycle/);
-requireText("closed-to-finished chain", lifecycle, /status:\s*"finished"/);
-requireText("finished-to-deleted chain", lifecycle, /status:\s*"deleted"/);
+requireText("closed-to-finished chain", lifecycle, /args\.status\s*===\s*"closed"[\s\S]*status:\s*"finished"/);
+requireText("finished-to-deleted chain", lifecycle, /args\.status\s*===\s*"finished"[\s\S]*status:\s*"deleted"/);
 requireText("donation preservation", lifecycle, /paymentActive:\s*true/);
+requireAbsent("retention timestamp mutation", lifecycle, /paymentActive:\s*true,[\s\S]*lastSynced:\s*nowIso/);
 requireText("30-day retention", lifecycle, /30 \* 24 \* 60 \* 60 \* 1000/);
 requireText("off-peak lifecycle cron", crons, /daily-campaign-lifecycle-sync[\s\S]*hourUTC: 17, minuteUTC: 23/);
 requireText("lifecycle cron starts closed phase", crons, /daily-campaign-lifecycle-sync[\s\S]*status:\s*"closed"/);
