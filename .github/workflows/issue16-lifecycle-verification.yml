@@ -9,6 +9,7 @@ on:
       - "scripts/verify-issue16-lifecycle.mjs"
       - "package.json"
       - "package-lock.json"
+      - "tsconfig.json"
   push:
     branches:
       - main
@@ -25,8 +26,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/verify-issue16-lifecycle.mjs
-      # Convex codegen can require a deployment/configuration. In CI, use the
-      # documented local anonymous deployment so codegen validates the exact
-      # checked-out source without requiring Production/Development credentials.
-      # This is static/local validation only; it is not Development runtime proof.
+      - run: npx tsc --noEmit
+      - run: npm run build
+      # Convex dev --once performs a bounded local validation of the checked-out
+      # backend without treating CI as Development/Production runtime evidence.
       - run: npx convex dev --once
