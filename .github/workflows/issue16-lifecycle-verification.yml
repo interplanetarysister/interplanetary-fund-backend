@@ -25,4 +25,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: node scripts/verify-issue16-lifecycle.mjs
-      - run: npx convex codegen
+      # Convex codegen can require a deployment/configuration. In CI, use the
+      # documented local anonymous deployment so codegen validates the exact
+      # checked-out source without requiring Production/Development credentials.
+      # This is static/local validation only; it is not Development runtime proof.
+      - run: npx convex dev --once
