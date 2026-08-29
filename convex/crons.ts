@@ -98,9 +98,9 @@ crons.daily(
   {}
 );
 
-// Daily campaign lifecycle propagation — 10am Pacific (17:00 UTC)
-// Uses an off-peak minute and a bounded cursor chain to propagate terminal
-// listing states within the required 24-hour window and perform 30-day cleanup.
+// Daily campaign lifecycle propagation — 17:23 UTC (off-peak minute)
+// Uses a bounded cursor chain to propagate terminal listing states within the
+// required 24-hour window and perform 30-day cleanup.
 crons.daily(
   "daily-campaign-lifecycle-sync",
   { hourUTC: 17, minuteUTC: 23 },
