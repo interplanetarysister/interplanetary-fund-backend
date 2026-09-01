@@ -360,7 +360,7 @@ export const recordPayPalPaymentSuccess = internalMutation({
     providerTransactionId: v.string(),
   },
   handler: async (ctx, args) => {
-    checkRateLimit("confirm_external_donation", 20, 60000);
+checkRateLimit("paypal_ipn", 20, 60000);
 
     if (!validateDonation(args.amount)) {
       throw new Error("Invalid donation amount. Must be between $0.01 and $100,000.");
