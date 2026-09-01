@@ -428,21 +428,22 @@ checkRateLimit("paypal_ipn", 20, 60000);
       throw new Error("PayPal callback amount does not match donation intent.");
     }
 
-    const donorName = args.donorName?.trim();
-    if (donorName && donorName !== donation.donorName) {
-      await ctx.db.patch(donation._id, {
-        donorName,
-        updatedAt: new Date().toISOString(),
-      });
-    }
+const donorName = args.donorName?.trim();
 
-    const latestDonation = await ctx.db.get(donation._id);
-    const result = await applyDonationConfirmation(ctx, latestDonation, providerTransactionId);
+const latestDonation = await ctx.db.get(donation._id);
+const result = await applyDonationConfirmation(ctx, latestDonation, providerTransactionId);
 
-    return {
-      status: result.status,
-      donationId: donation._id,
-    };
+if (donorName && latestDonation && donorName !== latestDonation.donorName) {
+  await ctx.db.patch(donation._id, {
+    donorName,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+return {
+  status: result.status,
+  donationId: donation._id,
+};
   },
 });
 
