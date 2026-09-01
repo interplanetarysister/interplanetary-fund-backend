@@ -27,6 +27,20 @@ function formatCurrency(amount: number) {
 
 export default function Explore() {
   const initialReceiptState = getInitialReceiptState();
+
+  // State declarations must come before any hooks that reference them
+  const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
+  const [donationAmount, setDonationAmount] = useState<string>("25");
+  const [donorName, setDonorName] = useState("");
+  const [donationMessage, setDonationMessage] = useState("");
+  const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done" | "bitcoin">("amount");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
+  const [viewedCampaigns, setViewedCampaigns] = useState<Set<string>>(new Set());
+  const [intentResult, setIntentResult] = useState<any | null>(null);
+  const [bitcoinQr, setBitcoinQr] = useState("");
+  const [verificationResult, setVerificationResult] = useState<any | null>(null);
+  const [confirmationReference, setConfirmationReference] = useState<string | null>(initialReceiptState.paymentReference);
+
   // Paginated campaigns — loads 8 at a time, more on scroll
   const { results: campaigns, status: campaignStatus, loadMore } = usePaginatedQuery(
     api.campaigns.getCampaigns,
@@ -46,18 +60,6 @@ export default function Explore() {
   const createDonationIntent = useMutation((api as any).paymentRouter.createDonationIntent);
   const verifyBitcoinDonation = useMutation((api as any).paymentRouter.verifyBitcoinDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
-
-  const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
-  const [donationAmount, setDonationAmount] = useState<string>("25");
-  const [donorName, setDonorName] = useState("");
-  const [donationMessage, setDonationMessage] = useState("");
-  const [donationStep, setDonationStep] = useState<"amount" | "info" | "processing" | "done" | "bitcoin">("amount");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("paypal");
-  const [viewedCampaigns, setViewedCampaigns] = useState<Set<string>>(new Set());
-  const [intentResult, setIntentResult] = useState<any | null>(null);
-  const [bitcoinQr, setBitcoinQr] = useState("");
-  const [verificationResult, setVerificationResult] = useState<any | null>(null);
-  const [confirmationReference, setConfirmationReference] = useState<string | null>(initialReceiptState.paymentReference);
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
