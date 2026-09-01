@@ -7,6 +7,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { checkRateLimit, validateDonation } from "./security";
+import { PLATFORM_BASE_URL } from "./utils";
 
 const USD_CURRENCY = "USD";
 const BTC_CURRENCY = "BTC";
@@ -98,9 +99,36 @@ function getEnabledMethods(config: PaymentConfig) {
 }
 
 function createPaymentReference() {
-  // Use crypto.randomUUID for high-entropy, non-guessable references.
-  const uuid = crypto.randomUUID().replace(/-/g, "");
-  return `pay_${uuid}`;
+  const maybeRandomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  if (maybeRandomUUID) {
+    return `pay_${maybeRandomUUID().replace(/-/g, "")}`;
+  }
+
+  const fallback = Array.from({ length: 4 }, () => Math.random().toString(36).slice(2, 10)).join("");
+  return `pay_${Date.now().toString(36)}${fallback}`;
+}
+
+const ALLOWED_RETURN_ORIGINS = new Set([
+  new URL(PLATFORM_BASE_URL).origin,
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]);
+
+function getValidatedReturnUrl(returnUrlBase: string) {
+  const baseReturnUrl = new URL(returnUrlBase);
+  const isLocalhost = baseReturnUrl.hostname === "localhost" || baseReturnUrl.hostname === "127.0.0.1";
+
+  if (baseReturnUrl.protocol !== "https:" && !(isLocalhost && baseReturnUrl.protocol === "http:")) {
+    throw new Error("Invalid returnUrlBase. Use HTTPS, or HTTP only for localhost development.");
+  }
+
+  if (!ALLOWED_RETURN_ORIGINS.has(baseReturnUrl.origin)) {
+    throw new Error("Invalid returnUrlBase origin.");
+  }
+
+  return baseReturnUrl;
 }
 
 function getBitcoinUri(address: string, btcAmount: number, reference: string, campaignTitle: string) {
@@ -305,10 +333,7 @@ export const createDonationIntent = mutation({
       paypalUrl.searchParams.set("currency_code", "USD");
       paypalUrl.searchParams.set("custom", paymentReference);
       if (args.returnUrlBase) {
-        const baseReturnUrl = new URL(args.returnUrlBase);
-        if (baseReturnUrl.protocol !== "https:" && baseReturnUrl.protocol !== "http:") {
-          throw new Error("Invalid returnUrlBase. Must be an http(s) URL.");
-        }
+        const baseReturnUrl = getValidatedReturnUrl(args.returnUrlBase);
 
         const successUrl = new URL(baseReturnUrl.toString());
         successUrl.searchParams.set("donation", "success");
@@ -381,52 +406,13 @@ export const createDonationIntent = mutation({
   },
 });
 
-export const confirmExternalDonation = mutation({
-  args: {
-    donationId: v.id("donations"),
-    providerTransactionId: v.string(),
-    status: v.union(v.literal("confirmed"), v.literal("failed"), v.literal("refunded")),
-  },
-  handler: async (ctx, args) => {
-    checkRateLimit("confirm_external_donation", 20, 60000);
-
-    const duplicate = await ctx.db
-      .query("donations")
-      .withIndex("byProviderTransactionId", (q: any) => q.eq("providerTransactionId", args.providerTransactionId))
-      .first();
-
-    if (duplicate && duplicate._id !== args.donationId) {
-      return {
-        status: "duplicate_transaction",
-        duplicateDonationId: duplicate._id,
-      };
-    }
-
-    const donation = await ctx.db.get(args.donationId);
-    if (!donation) {
-      throw new Error("Donation not found.");
-    }
-
-    if (args.status === "confirmed") {
-      const result = await applyDonationConfirmation(ctx, donation, args.providerTransactionId);
-      return { status: result.status };
-    }
-
-    await ctx.db.patch(donation._id, {
-      status: args.status,
-      providerTransactionId: args.providerTransactionId,
-      updatedAt: new Date().toISOString(),
-    });
-
-    return { status: args.status };
-  },
-});
-
 export const getDonationReceipt = query({
   args: {
     paymentReference: v.string(),
   },
   handler: async (ctx, args) => {
+    checkRateLimit("donation_receipt_read", 30, 60000);
+
     const donation = await ctx.db
       .query("donations")
       .withIndex("byPaymentReference", (q: any) => q.eq("paymentReference", args.paymentReference))
@@ -439,16 +425,13 @@ export const getDonationReceipt = query({
     const feeBreakdown = donation.feeSnapshot ?? await calculateNetDonationAmount(ctx, donation.amount);
 
     return {
-      donationId: donation._id,
       campaignId: donation.campaignId,
       campaignTitle: donation.campaignTitle,
-      donorName: donation.donorName || "Anonymous",
       amount: donation.amount,
       currency: donation.currency || USD_CURRENCY,
       paymentMethod: donation.paymentMethod,
       paymentProvider: donation.provider || donation.paymentMethod,
       paymentReference: donation.paymentReference,
-      providerTransactionId: donation.providerTransactionId,
       status: donation.status,
       createdAt: donation.createdAt,
       confirmedAt: donation.confirmedAt,
