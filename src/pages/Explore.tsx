@@ -304,8 +304,10 @@ export default function Explore() {
                   </div>
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-ifmuted">Payment method</span>
-                    <span className="text-iftext text-right capitalize">
-                      {donationReceipt.paymentProvider || donationReceipt.paymentMethod}
+                    <span className="text-iftext text-right">
+                      {(donationReceipt.paymentProvider || donationReceipt.paymentMethod)
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c: string) => c.toUpperCase())}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-4">
