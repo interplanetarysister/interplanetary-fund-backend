@@ -147,6 +147,15 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
     return { status: "already_confirmed" };
   }
 
+  const campaign = await ctx.db
+    .query("monitoredCampaigns")
+    .withIndex("byIfId", (q: any) => q.eq("ifCampaignId", donation.campaignId))
+    .first();
+
+  if (!campaign) {
+    throw new Error("Campaign not found for donation confirmation.");
+  }
+
   const feeConfig = await ctx.db.query("feeConfig").filter((q: any) => q.eq("active", true)).first();
   const platformFeePercentSnapshot = feeConfig?.platformFeePercent ?? 5;
   const processingFeePercentSnapshot = feeConfig?.processingFeePercent ?? 2.9;
@@ -165,17 +174,10 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
     updatedAt: now,
   });
 
-  const campaign = await ctx.db
-    .query("monitoredCampaigns")
-    .withIndex("byIfId", (q: any) => q.eq("ifCampaignId", donation.campaignId))
-    .first();
-
-  if (campaign) {
-    await ctx.db.patch(campaign._id, {
-      raisedAmount: (campaign.raisedAmount || 0) + donation.amount,
-      donorCount: (campaign.donorCount || 0) + 1,
-    });
-  }
+  await ctx.db.patch(campaign._id, {
+    raisedAmount: (campaign.raisedAmount || 0) + donation.amount,
+    donorCount: (campaign.donorCount || 0) + 1,
+  });
 
   await ctx.db.insert("transactions", {
     userId: donation.campaignId,
@@ -360,7 +362,7 @@ export const recordPayPalPaymentSuccess = internalMutation({
     providerTransactionId: v.string(),
   },
   handler: async (ctx, args) => {
-checkRateLimit("paypal_ipn", 20, 60000);
+    checkRateLimit("paypal_ipn", 20, 60000);
 
     if (!validateDonation(args.amount)) {
       throw new Error("Invalid donation amount. Must be between $0.01 and $100,000.");
@@ -383,7 +385,13 @@ checkRateLimit("paypal_ipn", 20, 60000);
 
     const paypalBusinessEmail = (process.env.PAYPAL_BUSINESS_EMAIL || "").trim().toLowerCase();
     const receiverEmail = (args.receiverEmail || "").trim().toLowerCase();
-    if (paypalBusinessEmail && receiverEmail && receiverEmail !== paypalBusinessEmail) {
+    if (!paypalBusinessEmail) {
+      throw new Error("PayPal merchant receiver identity is not configured.");
+    }
+    if (!receiverEmail) {
+      throw new Error("PayPal callback receiver email is required.");
+    }
+    if (receiverEmail !== paypalBusinessEmail) {
       throw new Error("PayPal receiver email mismatch.");
     }
 
@@ -428,22 +436,20 @@ checkRateLimit("paypal_ipn", 20, 60000);
       throw new Error("PayPal callback amount does not match donation intent.");
     }
 
-const donorName = args.donorName?.trim();
+    const result = await applyDonationConfirmation(ctx, donation, providerTransactionId);
 
-const latestDonation = await ctx.db.get(donation._id);
-const result = await applyDonationConfirmation(ctx, latestDonation, providerTransactionId);
+    const donorName = args.donorName?.trim();
+    if (donorName && donorName !== donation.donorName) {
+      await ctx.db.patch(donation._id, {
+        donorName,
+        updatedAt: new Date().toISOString(),
+      });
+    }
 
-if (donorName && latestDonation && donorName !== latestDonation.donorName) {
-  await ctx.db.patch(donation._id, {
-    donorName,
-    updatedAt: new Date().toISOString(),
-  });
-}
-
-return {
-  status: result.status,
-  donationId: donation._id,
-};
+    return {
+      status: result.status,
+      donationId: donation._id,
+    };
   },
 });
 
