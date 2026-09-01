@@ -60,9 +60,9 @@ http.route({
       receiverEmail: receiverEmail || undefined,
     });
 
-    if (result?.status === "duplicate_transaction") {
-      return new Response("duplicate_transaction", { status: 409 });
-    }
+if (result?.status === "duplicate_transaction") {
+  return new Response("duplicate_transaction", { status: 200 });
+}
 
     return new Response("ok", { status: 200 });
   }),
