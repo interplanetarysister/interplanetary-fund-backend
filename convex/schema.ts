@@ -162,6 +162,10 @@ export default defineSchema({
     providerTransactionId: v.optional(v.string()),
     donationId: v.optional(v.string()),
     paymentReference: v.optional(v.string()),
+    platformFeePercentSnapshot: v.optional(v.number()),
+    processingFeePercentSnapshot: v.optional(v.number()),
+    processingFeeFlatSnapshot: v.optional(v.number()),
+    feeDeductionTiming: v.optional(v.string()),
   }).index("byUserId", ["userId"]).index("byType", ["type"]).index("byProviderTransactionId", ["providerTransactionId"]),
 
   // DONATIONS
@@ -180,6 +184,10 @@ export default defineSchema({
     paymentReference: v.optional(v.string()),
     providerTransactionId: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    platformFeePercentSnapshot: v.optional(v.number()),
+    processingFeePercentSnapshot: v.optional(v.number()),
+    processingFeeFlatSnapshot: v.optional(v.number()),
+    feeDeductionTiming: v.optional(v.string()),
     expiresAt: v.optional(v.string()),
     confirmedAt: v.optional(v.string()),
     updatedAt: v.optional(v.string()),
