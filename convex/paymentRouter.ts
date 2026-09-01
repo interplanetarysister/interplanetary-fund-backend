@@ -439,6 +439,7 @@ export const getDonationReceipt = query({
     const feeBreakdown = donation.feeSnapshot ?? await calculateNetDonationAmount(ctx, donation.amount);
 
     return {
+      donationId: donation._id,
       campaignId: donation.campaignId,
       campaignTitle: donation.campaignTitle,
       donorName: donation.donorName || "Anonymous",
