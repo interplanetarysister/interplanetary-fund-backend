@@ -185,6 +185,12 @@ export default defineSchema({
     checkout: v.optional(v.object({
       url: v.string(),
     })),
+    feeSnapshot: v.optional(v.object({
+      platformFee: v.number(),
+      processingFee: v.number(),
+      totalFees: v.number(),
+      netAmount: v.number(),
+    })),
     bitcoinTxHash: v.optional(v.string()),
     bitcoin: v.optional(v.object({
       status: v.string(),

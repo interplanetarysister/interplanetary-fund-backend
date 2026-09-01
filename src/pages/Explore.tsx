@@ -18,12 +18,6 @@ function getInitialReceiptState() {
   const params = new URLSearchParams(window.location.search);
   return {
     paymentReference: params.get("donation") === "success" ? params.get("if_ref") : null,
-    providerTransactionId:
-      params.get("tx") ||
-      params.get("txn_id") ||
-      params.get("transaction_id") ||
-      params.get("paymentId") ||
-      null,
   };
 }
 
@@ -45,12 +39,11 @@ export default function Explore() {
   const paymentMethods = useQuery((api as any).paymentRouter.getAvailablePaymentMethods, {});
   const donationReceipt = useQuery(
     (api as any).paymentRouter.getDonationReceipt,
-    initialReceiptState.paymentReference
-      ? { paymentReference: initialReceiptState.paymentReference }
+    confirmationReference
+      ? { paymentReference: confirmationReference }
       : "skip"
   );
   const createDonationIntent = useMutation((api as any).paymentRouter.createDonationIntent);
-  const confirmExternalDonation = useMutation((api as any).paymentRouter.confirmExternalDonation);
   const verifyBitcoinDonation = useMutation((api as any).paymentRouter.verifyBitcoinDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
 
@@ -65,10 +58,6 @@ export default function Explore() {
   const [bitcoinQr, setBitcoinQr] = useState("");
   const [verificationResult, setVerificationResult] = useState<any | null>(null);
   const [confirmationReference, setConfirmationReference] = useState<string | null>(initialReceiptState.paymentReference);
-  const [confirmationTransactionId, setConfirmationTransactionId] = useState<string | null>(initialReceiptState.providerTransactionId);
-  const [isConfirmingReceipt, setIsConfirmingReceipt] = useState(false);
-  const [receiptConfirmationError, setReceiptConfirmationError] = useState<string | null>(null);
-  const [hasAttemptedReceiptConfirmation, setHasAttemptedReceiptConfirmation] = useState(false);
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
@@ -104,34 +93,6 @@ export default function Explore() {
       cancelled = true;
     };
   }, [intentResult?.bitcoin?.paymentUri]);
-
-  useEffect(() => {
-    if (!confirmationReference || !donationReceipt?.donationId || !confirmationTransactionId || hasAttemptedReceiptConfirmation) {
-      return;
-    }
-
-    setHasAttemptedReceiptConfirmation(true);
-    setIsConfirmingReceipt(true);
-    setReceiptConfirmationError(null);
-
-    confirmExternalDonation({
-      donationId: donationReceipt.donationId,
-      providerTransactionId: confirmationTransactionId,
-      status: "confirmed",
-    })
-      .catch((error: any) => {
-        setReceiptConfirmationError(error?.message || "We couldn't verify the PayPal transaction automatically.");
-      })
-      .finally(() => {
-        setIsConfirmingReceipt(false);
-      });
-  }, [
-    confirmationReference,
-    confirmationTransactionId,
-    donationReceipt?.donationId,
-    hasAttemptedReceiptConfirmation,
-    confirmExternalDonation,
-  ]);
 
   if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {
     return (
@@ -271,9 +232,6 @@ export default function Explore() {
     const nextUrl = `${url.pathname}${url.search ? `${url.search}` : ""}${url.hash}`;
     window.history.replaceState({}, "", nextUrl);
     setConfirmationReference(null);
-    setConfirmationTransactionId(null);
-    setReceiptConfirmationError(null);
-    setHasAttemptedReceiptConfirmation(false);
   };
 
   const handleReturnFromReceipt = () => {
@@ -346,12 +304,14 @@ export default function Explore() {
                   </div>
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-ifmuted">Payment method</span>
-                    <span className="text-iftext text-right">PayPal</span>
+                    <span className="text-iftext text-right capitalize">
+                      {donationReceipt.paymentProvider || donationReceipt.paymentMethod}
+                    </span>
                   </div>
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-ifmuted">Transaction ID</span>
                     <span className="text-iftext text-right break-all">
-                      {confirmationTransactionId || donationReceipt.providerTransactionId || donationReceipt.paymentReference}
+                      {donationReceipt.providerTransactionId || donationReceipt.paymentReference}
                     </span>
                   </div>
                   <div className="flex items-start justify-between gap-4">
@@ -367,21 +327,15 @@ export default function Explore() {
                   <div className="flex items-start justify-between gap-4">
                     <span className="text-ifmuted">Status</span>
                     <span className="text-iftext text-right capitalize">
-                      {isConfirmingReceipt ? "Confirming" : donationReceipt.status}
+                      {donationReceipt.status}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {receiptConfirmationError && (
-                <div className="rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-                  {receiptConfirmationError}
-                </div>
-              )}
-
-              {!confirmationTransactionId && (
+              {!donationReceipt.providerTransactionId && (
                 <div className="rounded-xl border border-ifamber/30 bg-ifamber/10 px-3 py-2 text-xs text-iftext">
-                  PayPal did not return a transaction ID in the browser redirect, so this receipt is using your Interplanetary Fund reference until PayPal confirmation is available.
+                  PayPal confirmation is pending. Your receipt is saved under your Interplanetary Fund reference and will update once payment settles.
                 </div>
               )}
 

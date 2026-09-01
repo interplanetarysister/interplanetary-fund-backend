@@ -98,7 +98,9 @@ function getEnabledMethods(config: PaymentConfig) {
 }
 
 function createPaymentReference() {
-  return `pay_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  // Use crypto.randomUUID for high-entropy, non-guessable references.
+  const uuid = crypto.randomUUID().replace(/-/g, "");
+  return `pay_${uuid}`;
 }
 
 function getBitcoinUri(address: string, btcAmount: number, reference: string, campaignTitle: string) {
@@ -270,6 +272,7 @@ export const createDonationIntent = mutation({
     const now = new Date();
     const createdAt = now.toISOString();
     const paymentReference = createPaymentReference();
+    const feeSnapshot = await calculateNetDonationAmount(ctx, args.amountUSD);
 
     const baseDonation: any = {
       campaignId: args.campaignId,
@@ -286,6 +289,7 @@ export const createDonationIntent = mutation({
       paymentReference,
       idempotencyKey: args.idempotencyKey,
       expiresAt: new Date(now.getTime() + getNumberEnv("DONATION_INTENT_EXPIRY_MINUTES", 60) * 60_000).toISOString(),
+      feeSnapshot,
     };
 
     let checkout: any;
@@ -432,10 +436,9 @@ export const getDonationReceipt = query({
       return null;
     }
 
-    const feeBreakdown = await calculateNetDonationAmount(ctx, donation.amount);
+    const feeBreakdown = donation.feeSnapshot ?? await calculateNetDonationAmount(ctx, donation.amount);
 
     return {
-      donationId: donation._id,
       campaignId: donation.campaignId,
       campaignTitle: donation.campaignTitle,
       donorName: donation.donorName || "Anonymous",
