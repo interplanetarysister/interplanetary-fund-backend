@@ -5,9 +5,10 @@
  */
 
 import { TermsAcceptance } from "./components/TermsAcceptance";
-import { useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { useState, useMemo, useCallback, lazy, Suspense, useEffect } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
+import { SplashScreen } from "@capacitor/splash-screen";
 
 // Lazy load pages
 const Explore = lazy(() => import("./pages/Explore"));
@@ -32,6 +33,13 @@ type View = "explore" | "facebook" | "globe" | "admin";
 
 export default function App() {
   const [view, setView] = useState<View>("explore");
+
+  // Dismiss the native splash screen on first paint. launchAutoHide is false
+  // in capacitor.config so this is the only way the splash goes away.
+  useEffect(() => {
+    SplashScreen.hide({ fadeOutDuration: 300 }).catch(() => {/* web/non-Capacitor env */});
+  }, []);
+
   const [tapCount, setTapCount] = useState(0);
   const [showPinGate, setShowPinGate] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -142,7 +150,7 @@ export default function App() {
       )}
 
       {/* Content */}
-      <main className={`max-w-md mx-auto px-4 py-4 pb-20 min-h-screen flex-1 ${view === "globe" ? "p-0 max-w-none" : ""}`}>
+      <main className={`max-w-md mx-auto px-4 py-4 pb-20 flex-1 ${view === "globe" ? "p-0 max-w-none" : ""}`}>
         <Suspense fallback={<PageLoader />}>
           {view === "explore" && <Explore />}
           {view === "globe" && <GlobePage />}
