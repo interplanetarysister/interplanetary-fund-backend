@@ -24,9 +24,9 @@ export default function Explore() {
   // Lightweight stats query — just numbers, no campaign data
   const stats = useQuery(api.campaigns.getCampaignStats, {});
   const balances = useQuery(api.treasury.aggregateBalances, {});
-  const paymentMethods = useQuery((api as any).paymentRouter.getAvailablePaymentMethods, {});
-  const createDonationIntent = useMutation((api as any).paymentRouter.createDonationIntent);
-  const verifyBitcoinDonation = useMutation((api as any).paymentRouter.verifyBitcoinDonation);
+  const paymentMethods = useQuery(api.paymentRouter.getAvailablePaymentMethods, {});
+  const createDonationIntent = useMutation(api.paymentRouter.createDonationIntent);
+  const verifyBitcoinDonation = useMutation(api.paymentRouter.verifyBitcoinDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
 
   const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
