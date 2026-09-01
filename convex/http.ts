@@ -63,6 +63,9 @@ http.route({
     if (result?.status === "duplicate_transaction") {
       return new Response("duplicate_transaction", { status: 200 });
     }
+    if (result?.status === "already_settled" || result?.status === "already_confirmed") {
+      return new Response(result.status, { status: 200 });
+    }
 
     return new Response("ok", { status: 200 });
   }),
