@@ -1,63 +1,64 @@
-# Interplanetary Fund — Product System Contract
+# Interplanetary Fund — Product System Contract (Legacy Repository Reference)
 
-**Status:** Authoritative production architecture
-**Effective:** 2026-08-25
+**Current status:** This repository is historical/reference only unless explicitly reassigned by the owner.
+**Current architecture effective:** 2026-09-04
 
-Interplanetary Fund is **one cohesive product implemented across multiple repositories**. Repositories are code boundaries, not product boundaries.
+Interplanetary Fund is one cohesive product implemented across coordinated repositories. Repositories are implementation boundaries, not separate products.
 
-## Canonical repositories
+## Current canonical repositories
 
-- `interplanetarysister/InterplanetaryFund` — authoritative user-facing React/Vite application and its production-facing client integration.
-- `interplanetarysister/interplanetary-fund-backend` — authoritative backend/operations repository for backend services, admin monitoring, agents, security, treasury, scheduled jobs, and operational infrastructure.
-- `interplanetarysister/interplanetary-fund` — migration/reference source. Unique production-relevant capabilities are to be reconciled into the two canonical repositories; it is not an independent product.
+- `interplanetarysister/interplanetary-fund2` — canonical user-facing Base44 / React+Vite application layer.
+- `interplanetarysister/InterplanetaryFund` — authoritative Convex backend and internal-agent runtime.
+- `interplanetarysister/interplanetary-fund-backend` — legacy/reference source. Unique production-relevant capabilities must be reconciled into the current canonical repositories; this repository is not an independent production source of truth.
+
+## Historical note
+
+Older revisions of this contract named `InterplanetaryFund` as the frontend and this repository as the authoritative backend. That August 2026 arrangement is superseded by the current owner-authorized repository boundary. Preserve the history, but do not implement new production architecture here based on the older wording.
 
 ## Single live product rule
 
-A campaign, user, donation, connection, agent state, administrative state, or other live business object has **one canonical live identity**. It must not be duplicated into repository-local production databases merely because more than one repository consumes it.
+A campaign, user, donation, connection, agent state, administrative state, or other live business object has one canonical live identity. It must not be duplicated into repository-local production databases merely because more than one repository consumes it.
 
-Git repositories contain implementations. The shared production backend/data layer contains live product state.
+Git repositories contain implementations and historical evidence. The authoritative Convex/backend runtime in `InterplanetaryFund` owns canonical backend state; `interplanetary-fund2` consumes/exposes it through approved application interfaces.
 
 ## Cross-repository feature rule
 
-Every feature is treated as a single product capability. A change must be classified as frontend-only, backend/operations-only, or cross-repository. Cross-repository capabilities require compatible changes to all affected consumers, shared contracts, permissions, and operational monitoring before being considered complete.
+Every feature is treated as one product capability. A change must be classified as application-only, backend/runtime-only, or cross-repository. Cross-repository capabilities require compatible changes to all affected current consumers, interfaces, permissions, and operational monitoring before being considered complete.
 
 ## Campaign consistency invariant
 
 For every campaign ID:
 
-- creation through the user-facing application creates the canonical backend record;
-- admin and agent surfaces read the same canonical record;
-- edits update that canonical record rather than a local copy;
-- campaign status, funding totals, permissions, audit history, and connected-platform state are derived from the same source of truth;
-- every authorized surface must converge on the same current state.
+- authorized creation from the application resolves to the canonical backend record;
+- admin and agent surfaces read the same authoritative record where permitted;
+- edits update the canonical record rather than creating a competing production copy;
+- campaign status, funding totals, permissions, audit history, and connected-platform state reconcile to the same source of truth;
+- every authorized surface converges on the same current state.
 
-## Deployment invariant
+## Migration rule from this legacy repository
 
-A production release is complete only when the affected canonical repositories are compatible with the same backend contract and the resulting end-to-end flow is verified. A repository being pushed successfully does **not** by itself mean the product release is complete.
+When moving a capability from `interplanetary-fund-backend`:
 
-## Migration rule
+- compare it with current `InterplanetaryFund` and `interplanetary-fund2` implementations first;
+- preserve useful behavior unless intentionally superseded;
+- place user-facing/application behavior in `interplanetary-fund2`;
+- place authoritative backend/runtime behavior in `InterplanetaryFund`;
+- do not migrate secrets, credentials, obsolete competing stores, or stale architecture assumptions;
+- document origin and destination;
+- verify imports, environment variables, schemas, APIs, permissions, financial behavior, idempotency, and deployment in the destination.
 
-When moving functionality from `interplanetary-fund`:
+## Completion checklist for migrated capabilities
 
-- preserve behavior unless intentionally superseded;
-- place user-facing behavior in `InterplanetaryFund`;
-- place backend, admin monitoring, agents, security, treasury, and operations in this repository;
-- do not migrate secrets, credentials, or obsolete competing sources of truth;
-- document the originating capability and destination;
-- verify imports, environment variables, schemas, APIs, permissions, and deployment configuration after migration.
-
-## Build checklist
-
-Before declaring a cross-repository capability complete:
-
-- [ ] canonical data owner identified
-- [ ] stable entity IDs preserved
-- [ ] frontend consumer updated
-- [ ] backend/API updated
-- [ ] admin/monitoring updated where applicable
-- [ ] agents/workflows updated where applicable
-- [ ] permissions/security updated
-- [ ] shared types/contracts compatible
+- [ ] current canonical owner identified
+- [ ] existing destination implementation inspected
+- [ ] unique missing behavior identified
+- [ ] stable entity IDs/contracts preserved where required
+- [ ] application consumer updated if applicable
+- [ ] backend/runtime updated if applicable
+- [ ] permissions/security verified
+- [ ] financial/idempotency boundaries verified where applicable
+- [ ] shared interfaces compatible
 - [ ] environment/deployment configuration checked
-- [ ] end-to-end create/read/update flow verified
+- [ ] end-to-end behavior verified
 - [ ] no competing production source of truth introduced
+- [ ] historical provenance retained until retirement is approved
