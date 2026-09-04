@@ -19,6 +19,9 @@ Production has reported repeated Convex write conflicts involving `cron_commit_m
 
 For each writer, record: entrypoint, tables/indexes read, tables/indexes written, idempotency key, retry behavior, whether it can overlap, and whether it can continue after a stale worker loses ownership.
 
+## Current-main refresh gate (added 2026-09-04)
+The next implementation PR must be created from the verified current `main` head, not from this stale planning branch. Before code changes, capture the exact `main` SHA and a source inventory covering direct and indirect writers, cron registrations, generated/runtime entrypoints, and any deployment-only functions. Reconcile that inventory against Development and Production Convex function/cron topology without deleting or overwriting behavior that is not represented in GitHub. This planning PR remains Draft and its prior evidence is historical until that refresh is complete.
+
 ## Coordination contract
 The implementation must provide a durable, server-side coordination boundary with:
 
