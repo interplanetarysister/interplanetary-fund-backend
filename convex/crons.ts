@@ -98,4 +98,13 @@ crons.daily(
   {}
 );
 
+// Daily campaign lifecycle sync — closes/finishes/deletes listing states within 24h window
+// and removes linked posts 30 days after a campaign is marked deleted.
+crons.daily(
+  "daily-campaign-lifecycle-sync",
+  { hourUTC: 17, minuteUTC: 0 },
+  internal.campaignLifecycleInternal.syncCampaignLifecycle,
+  {}
+);
+
 export default crons;
