@@ -1,48 +1,45 @@
-# Interplanetary Fund Backend
+# Interplanetary Fund Backend — Legacy / Reference Repository
 
-**Purpose: Backend**
+> **Current status (2026-09-04): LEGACY / REFERENCE ONLY unless explicitly reassigned by the owner.**
 
-Authoritative backend and operations system for the single Interplanetary Fund product.
+This repository contains historical backend, admin, agent, security, treasury, payment, mobile, and operational implementation that remains useful for capability comparison and migration evidence. It is **not** the current production backend source of truth.
 
-## Product Build Contract
+## Current canonical repository ownership
 
-Interplanetary Fund is **one cohesive product implemented across coordinated repositories**. Repositories are implementation boundaries, not separate products.
-
-### Repository purposes
-
-| Repository | Purpose | Authority |
+| Repository | Current role | Production authority |
 |---|---|---|
-| `interplanetarysister/InterplanetaryFund` | **Frontend** | User-facing React/Vite application |
-| `interplanetarysister/interplanetary-fund-backend` | **Backend** | Backend, admin, agents, security, treasury, operations |
-| `interplanetarysister/interplanetary-fund` | **Migration** | Historical/reference source until every unique capability is reconciled |
+| `interplanetarysister/interplanetary-fund2` | User-facing Base44 / React+Vite application | Canonical application layer |
+| `interplanetarysister/InterplanetaryFund` | Convex backend + internal-agent runtime | Canonical backend/runtime |
+| `interplanetarysister/interplanetary-fund-backend` | Historical backend/reference snapshot | **No new production architecture** |
 
-### Build-agent rule
+## What this repository is for now
 
-Every build agent, workflow, Copilot/Codex task, and human implementation must treat the three repositories as **one product**. Before changing code, identify the repository purpose and determine whether the capability is frontend-only, backend/operations-only, or cross-repository.
+- capability/reference audits before retirement;
+- provenance and historical implementation evidence;
+- comparing old payment, migration, admin, agent, mobile, and operational behavior with the current canonical implementation;
+- identifying unique production-relevant behavior that has not yet been migrated;
+- preserving legally/security-relevant history until reviewed.
 
-For cross-repository work, implement and verify the complete capability across all affected repositories. Do not create competing production sources of truth.
+## Migration rule
 
-Live campaigns, users, donations, permissions, agent state, administrative state, and other business entities must retain one canonical live identity in this authoritative backend. Frontend and admin surfaces consume this canonical state; they must not create competing production stores.
+Do **not** continue implementing new production backend features here by default.
 
-### This repository owns
+When a useful capability exists only here:
 
-- Canonical backend services and data access
-- Convex functions and shared business logic
-- Admin cockpit and monitoring
-- Agent runtime, orchestration, memory, and scheduling
-- Security, fraud controls, protocol enforcement
-- Treasury, payments, fees, payouts, and financial operations
-- Scheduled jobs and operational integrations
-- Backend-facing contracts consumed by the authoritative frontend
+1. compare it against current `InterplanetaryFund` backend/runtime behavior and `interplanetary-fund2` application behavior;
+2. determine whether it is still required;
+3. migrate only the missing behavior to the repository that currently owns it;
+4. use explicit application/backend interfaces rather than copying live-state ownership;
+5. do not migrate secrets or credentials;
+6. verify authorization, data integrity, financial semantics, idempotency, tests, and deployments in the destination repository;
+7. retain this repository as historical evidence until the migration/retirement audit is complete.
 
-### This repository does not independently own
+## Important historical-document warning
 
-The user-facing frontend implementation. That belongs to `InterplanetaryFund`.
+Older files in this repository may call this repository the authoritative backend and may call `InterplanetaryFund` the frontend. Those statements describe an earlier architecture and are superseded by the current owner-authorized September 2026 repository boundary.
 
-`interplanetary-fund` remains migration/reference material and must not become a second production backend.
+`CANONICAL_REPO_TRANSITION.md` and `PRODUCT_SYSTEM_CONTRACT.md` have been updated to preserve the historical record while reflecting the current role.
 
-## Release Rule
+## Safety
 
-A backend change is production-complete only after affected frontend consumers, contracts, permissions, environment configuration, operational monitoring, and end-to-end flows have been verified. A successful Git push alone is not a complete product release.
-
-See `PRODUCT_SYSTEM_CONTRACT.md` and `CANONICAL_REPO_TRANSITION.md` for authoritative rules.
+Do not delete or archive this repository merely because it is legacy. First verify that every unique production-relevant capability, security finding, documentation requirement, and provenance record has either been migrated, preserved, or intentionally retired with owner approval.
