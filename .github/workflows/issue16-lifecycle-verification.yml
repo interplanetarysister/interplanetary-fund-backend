@@ -1,0 +1,33 @@
+name: Issue 16 Lifecycle Verification
+
+on:
+  pull_request:
+    paths:
+      - "convex/campaignLifecycleInternal.ts"
+      - "convex/campaigns.ts"
+      - "convex/crons.ts"
+      - "scripts/verify-issue16-lifecycle.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+  push:
+    branches:
+      - main
+      - "agent1/issue-16-lifecycle-implementation-current-main"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: node scripts/verify-issue16-lifecycle.mjs
+      - run: npx tsc --noEmit
+      - run: npm run build
+      # Convex dev --once performs a bounded local validation of the checked-out
+      # backend without treating CI as Development/Production runtime evidence.
+      - run: npx convex dev --once
