@@ -1,35 +1,48 @@
-# Canonical Repository Transition
+# Canonical Repository Transition — Historical Record / Current Correction
 
-## Current production decision — August 25, 2026
+## Current production decision — September 4, 2026
 
-Interplanetary Fund is one cohesive product with multiple coordinated repositories.
+Interplanetary Fund remains one cohesive product with coordinated repositories, but the August 25 ownership model recorded in earlier revisions of this file has been superseded.
 
-### Canonical production repositories
+### Current canonical production repositories
 
-1. `interplanetarysister/InterplanetaryFund` — authoritative user-facing React/Vite frontend.
-2. `interplanetarysister/interplanetary-fund-backend` — authoritative backend, admin monitoring, agent runtime, security, treasury, scheduled jobs, and operational infrastructure.
+1. `interplanetarysister/interplanetary-fund2` — canonical user-facing Base44 / React+Vite application layer.
+2. `interplanetarysister/InterplanetaryFund` — authoritative Convex backend and internal-agent runtime, including persistent agent state/memory, permissions, orchestration, scheduled intelligence, treasury/payments backend, and backend protocol.
 
-### Migration/reference repository
+### Legacy/reference repository
 
-`interplanetarysister/interplanetary-fund` is a migration/reference source. It may contain capabilities that have not yet been reconciled into the canonical repositories. It is not an independent production product.
+`interplanetarysister/interplanetary-fund-backend` — **this repository** — is legacy/reference only unless explicitly reassigned by the owner. It must not become a second production backend source of truth.
+
+## Why this file changed
+
+An earlier August 25 architecture named `InterplanetaryFund` as the frontend and this repository as the authoritative backend. Later owner-authorized architecture reversed that consolidation direction and established `interplanetary-fund2` as the user-facing application and `InterplanetaryFund` as the canonical backend/runtime.
+
+This correction is intentionally preserved in place so agents do not continue acting on stale architecture.
 
 ## Source-of-truth rules
 
-- The frontend source of truth is `InterplanetaryFund`.
-- Backend and operations source of truth is `interplanetary-fund-backend`.
-- Live campaign/user/donation/business state has one canonical backend source of truth and is never split by repository.
-- Cross-repository behavior is integrated through explicit APIs/shared backend contracts, not by treating repositories as separate products.
-- Historical code may be migrated after capability comparison and compatibility review.
+- User-facing application behavior belongs in `interplanetary-fund2`.
+- Authoritative Convex/backend/runtime behavior belongs in `InterplanetaryFund`.
+- This repository is evidence/reference for prior capabilities until each unique production-relevant capability is reconciled.
+- Live campaign/user/donation/agent/business state must have one canonical source of truth.
+- Cross-repository behavior is integrated through explicit APIs/functions/contracts, not by copying live-state authority.
 - Secrets and credentials are never copied as source files during migration.
 
-## Campaign invariant
+## Capability migration rule
 
-A campaign created or changed from any authorized product surface retains one stable campaign ID and resolves to the same canonical live record. The user frontend, admin cockpit, agents, analytics, payment/treasury services, and integrations must converge on that record.
+When this repository contains a unique useful capability:
+
+1. inspect the current canonical application and backend implementations first;
+2. determine whether the historical capability is still required;
+3. migrate only the missing portion into the repository that owns it;
+4. preserve stable identities/contracts where appropriate;
+5. verify authorization, security, payments/financial semantics, idempotency, data integrity, tests, and deployment;
+6. document the migration before retiring the historical source.
 
 ## Release rule
 
-A feature is complete only when every affected canonical repository, contract, permission boundary, deployment configuration, and operational consumer is compatible and the end-to-end behavior is verified.
+A capability is complete only when every affected **current canonical** repository, interface, permission boundary, deployment configuration, and operational consumer is compatible and the end-to-end behavior is verified.
 
 ## Retirement policy
 
-Do not delete or archive `interplanetary-fund` until a capability audit confirms every unique production-relevant capability has either been migrated into the canonical repositories or explicitly retired.
+Do not delete or archive this repository until a capability/provenance/security audit confirms every unique production-relevant item has been migrated, preserved as historical evidence, or explicitly retired with owner approval.
