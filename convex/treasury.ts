@@ -349,3 +349,85 @@ export const updateFeeConfig = mutation({
     return { status: "success", configId };
   },
 });
+
+// Query: Per-campaign balance breakdown with fee calculations
+export const getCampaignBalances = query({
+  args: {},
+  handler: async (ctx) => {
+    const campaigns = await ctx.db.query("monitoredCampaigns").collect();
+    const feeConfig = await ctx.db.query("feeConfig").filter((q) => q.eq("active", true)).first();
+    const platformFeePercent = feeConfig?.platformFeePercent ?? 5;
+    const processingFeePercent = feeConfig?.processingFeePercent ?? 2.9;
+    const processingFeeFlat = feeConfig?.processingFeeFlat ?? 0.30;
+
+    const allPayouts = await ctx.db.query("payoutRequests").collect();
+
+    const breakdown = campaigns.map((campaign) => {
+      const pending = allPayouts
+        .filter(
+          (p) =>
+            p.userId === campaign.ifCampaignId &&
+            (p.status === "pending" || p.status === "pending_payout" || p.status === "pending_user_selection")
+        )
+        .reduce((s, p) => s + p.amountRequested, 0);
+
+      const gross = Math.max(0, (campaign.raisedAmount || 0) - pending);
+      const platformFee = gross * (platformFeePercent / 100);
+      const processingFee = gross * (processingFeePercent / 100) + (gross > 0 ? processingFeeFlat : 0);
+      const totalFees = platformFee + processingFee;
+      const net = Math.max(0, gross - totalFees);
+
+      return {
+        campaignId: campaign.ifCampaignId,
+        title: campaign.title,
+        status: campaign.status,
+        grossRaised: campaign.raisedAmount || 0,
+        pendingPayouts: pending,
+        availableBalance: gross,
+        platformFee,
+        processingFee,
+        totalFees,
+        netAmount: net,
+        donorCount: campaign.donorCount || 0,
+      };
+    });
+
+    const totalGross = breakdown.reduce((s, c) => s + c.availableBalance, 0);
+    const totalFees = breakdown.reduce((s, c) => s + c.totalFees, 0);
+    const totalNet = breakdown.reduce((s, c) => s + c.netAmount, 0);
+
+    return {
+      campaigns: breakdown,
+      totals: {
+        availableBalance: totalGross,
+        totalFees,
+        netAmount: totalNet,
+        feePercent: `${platformFeePercent + processingFeePercent}%`,
+      },
+    };
+  },
+});
+
+// Query: Get all payout requests (for Treasury page history)
+export const getPayoutHistory = query({
+  args: { status: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const payouts = await ctx.db.query("payoutRequests").collect();
+    const filtered = args.status ? payouts.filter((p) => p.status === args.status) : payouts;
+    return filtered
+      .sort((a, b) => b.requestedDate.localeCompare(a.requestedDate))
+      .map((p) => ({
+        payoutId: p._id,
+        campaignId: p.userId,
+        amountRequested: p.amountRequested,
+        feeAmount: p.feeAmount,
+        netAmount: p.netAmount,
+        payoutMethod: p.payoutMethod,
+        payoutDestination: p.payoutDestination,
+        status: p.status,
+        adminReviewStatus: p.adminReviewStatus,
+        requestedDate: p.requestedDate,
+        completedDate: p.completedDate,
+      }));
+  },
+});
