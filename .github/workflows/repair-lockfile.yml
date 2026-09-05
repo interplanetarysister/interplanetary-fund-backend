@@ -1,0 +1,32 @@
+name: Repair dependency lockfile
+
+on:
+  push:
+    branches:
+      - dependabot/npm_and_yarn/npm_and_yarn-f2975561e8
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate-lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Regenerate lockfile without running package scripts
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Verify clean install contract
+        run: npm ci --ignore-scripts
+      - name: Upload corrected lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: corrected-package-lock
+          path: package-lock.json
+          retention-days: 1

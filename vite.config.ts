@@ -31,10 +31,16 @@ export default defineConfig({
       output: {
         // Add copyright watermark in bundle
         banner: "/* Interplanetary Fund © 2026 Michelle Rogers. All Rights Reserved. PROPRIETARY. */",
-        // Manual chunk splitting — separates vendor code for better caching
-        manualChunks: {
-          "react-vendor": ["react", "react-dom"],
-          "convex-vendor": ["convex/react", "convex"],
+        // Vite 8/Rolldown expects manualChunks as a function. Preserve the existing
+        // React and Convex vendor boundaries without using the legacy object form.
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/react-dom")) {
+            return "react-vendor";
+          }
+          if (id.includes("node_modules/convex")) {
+            return "convex-vendor";
+          }
+          return undefined;
         },
       },
     },
