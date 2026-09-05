@@ -12,6 +12,7 @@ const USD_CURRENCY = "USD";
 const BTC_CURRENCY = "BTC";
 const SATOSHIS_PER_BTC = 100_000_000;
 const ONE_SATOSHI_BTC = 1 / SATOSHIS_PER_BTC;
+const DEFAULT_PAYPAL_BUSINESS_EMAIL = "interplanetarysister@gmail.com";
 
 type PaymentMethod = "paypal" | "cashapp" | "bitcoin";
 
@@ -36,7 +37,7 @@ function getNumberEnv(name: string, fallback: number): number {
 
 function getPaymentConfig(): PaymentConfig {
   return {
-    paypalBusinessEmail: process.env.PAYPAL_BUSINESS_EMAIL,
+    paypalBusinessEmail: process.env.PAYPAL_BUSINESS_EMAIL || DEFAULT_PAYPAL_BUSINESS_EMAIL,
     cashappCashtag: process.env.CASHAPP_CASHTAG,
     bitcoinAddress: process.env.BITCOIN_DONATION_ADDRESS,
     bitcoinRequiredConfirmations: getNumberEnv("BITCOIN_REQUIRED_CONFIRMATIONS", 3),
@@ -150,6 +151,7 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
   const now = new Date().toISOString();
   await ctx.db.patch(donation._id, {
     status: "confirmed",
+    cleared: true,
     confirmedAt: now,
     providerTransactionId: providerTransactionId || donation.providerTransactionId,
     updatedAt: now,
@@ -208,6 +210,7 @@ export const createDonationIntent = mutation({
     donorName: v.optional(v.string()),
     message: v.optional(v.string()),
     paymentMethod: v.union(v.literal("paypal"), v.literal("cashapp"), v.literal("bitcoin")),
+    recurrence: v.optional(v.union(v.literal("one_time"), v.literal("monthly"))),
     idempotencyKey: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -254,9 +257,11 @@ export const createDonationIntent = mutation({
       donorName: args.donorName || "Anonymous",
       message: args.message || "",
       paymentMethod: args.paymentMethod,
+      recurrence: args.recurrence || "one_time",
       provider: selected.provider,
       currency: USD_CURRENCY,
       status: args.paymentMethod === "bitcoin" ? "created" : "pending",
+      cleared: false,
       createdAt,
       updatedAt: createdAt,
       paymentReference,
@@ -276,6 +281,9 @@ export const createDonationIntent = mutation({
       paypalUrl.searchParams.set("amount", args.amountUSD.toFixed(2));
       paypalUrl.searchParams.set("currency_code", "USD");
       paypalUrl.searchParams.set("custom", paymentReference);
+      if (args.recurrence === "monthly") {
+        paypalUrl.searchParams.set("recurring", "1");
+      }
       checkout = {
         url: paypalUrl.toString(),
       };
@@ -370,6 +378,7 @@ export const confirmExternalDonation = mutation({
 
     await ctx.db.patch(donation._id, {
       status: args.status,
+      cleared: false,
       providerTransactionId: args.providerTransactionId,
       updatedAt: new Date().toISOString(),
     });
