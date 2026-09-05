@@ -1,0 +1,36 @@
+name: One-shot Vite 8 lockfile repair
+
+on:
+  push:
+    branches:
+      - solstice/backend-vite8-lock-repair
+    paths:
+      - '.github/workflows/one-shot-lock-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: solstice/backend-vite8-lock-repair
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+      - name: Regenerate lockfile from the merged package contract
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Prove npm ci accepts the regenerated lockfile
+        run: npm ci --ignore-scripts
+      - name: Commit only the corrected lockfile
+        run: |
+          git config user.name "Interplanetary Fund Repair Bot"
+          git config user.email "actions@github.com"
+          git add package-lock.json
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(deps): reconcile Vite 8 lockfile with Node 24 package contract"
+          git push origin HEAD:solstice/backend-vite8-lock-repair
