@@ -114,6 +114,7 @@ export const aggregateBalances = query({
 
     const externalTotalRaised = externalPlatforms.reduce((s, p) => s + (p.externalTotal || 0), 0);
     const externalTotalDonors = externalPlatforms.reduce((s, p) => s + (p.externalDonorCount || 0), 0);
+    const externalTotalClicks = externalPlatforms.reduce((s, p) => s + (p.linkClicks || 0), 0);
 
     const totalHeld = holdingAccounts.reduce((s, a) => s + (a.totalBalance || 0), 0);
     const totalPaidOut = holdingAccounts.reduce((s, a) => s + (a.totalPaidOut || 0), 0);
@@ -130,10 +131,13 @@ export const aggregateBalances = query({
       },
       externalPlatforms: {
         count: externalPlatforms.length,
-        totalRaised: externalTotalRaised,
-        totalDonors: externalTotalDonors,
+        totalRaised: 0,
+        totalDonors: 0,
+        totalClicks: externalTotalClicks,
+        legacyExternalRaised: externalTotalRaised,
+        legacyExternalDonors: externalTotalDonors,
         byPlatform: externalPlatforms.reduce((acc, p) => {
-          acc[p.platform] = (acc[p.platform] || 0) + (p.externalTotal || 0);
+          acc[p.platform] = (acc[p.platform] || 0) + (p.linkClicks || 0);
           return acc;
         }, {} as Record<string, number>),
       },
@@ -144,8 +148,8 @@ export const aggregateBalances = query({
         netPosition: totalHeld - totalPaidOut - totalFees,
       },
       grandTotal: {
-        raised: localTotalRaised + externalTotalRaised,
-        donors: localTotalDonors + externalTotalDonors,
+        raised: localTotalRaised,
+        donors: localTotalDonors,
         held: totalHeld,
       },
     };

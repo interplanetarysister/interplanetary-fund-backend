@@ -7,24 +7,15 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
-const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
 const IF_APP_BASE_URL = "https://interplanetary-fund.vercel.app";
 const IF_APP_HOST = new URL(IF_APP_BASE_URL).host;
 const BASE44_APP_HOST = new URL("https://base44-dispatcher-production.base44.workers.dev").host;
 const ORGANIZER_EMAIL = "cuddlemeplatonically@gmail.com";
 
-function generatePayPalLink(campaignTitle: string): string {
-  const params = new URLSearchParams({
-    cmd: "_donations",
-    business: BUSINESS_EMAIL,
-    item_name: `${campaignTitle} - Interplanetary Fund`,
-    currency_code: "USD",
-  });
-  return `https://www.paypal.com/donate/?${params.toString()}`;
-}
-
 function generateIFCampaignUrl(campaignId: string): string {
-  return `${IF_APP_BASE_URL}/campaign/${campaignId}`;
+  const url = new URL(IF_APP_BASE_URL);
+  url.searchParams.set("campaignId", campaignId);
+  return url.toString();
 }
 
 function textContainsHost(content: string | undefined, expectedHost: string): boolean {
@@ -40,6 +31,15 @@ function textContainsHost(content: string | undefined, expectedHost: string): bo
       return false;
     }
   });
+}
+
+function stripLegacyDonationLinks(content: string): string {
+  return content
+    .replace(/https:\/\/base44-dispatcher-production\.base44\.workers\.dev\/campaign\/[^\s\n]*/gi, "")
+    .replace(/https:\/\/interplanetary-fund\.vercel\.app\/campaign\/[^\s\n]*/gi, "")
+    .replace(/https:\/\/www\.paypal\.com\/donate\/\?[^\s\n]*/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // Platform-specific constraints for full campaign listings (issue #13)
@@ -168,7 +168,6 @@ function buildPlatformListing({
 }) {
   const normalized = normalizePlatform(platform);
   const rules = PLATFORM_RULES[normalized] || PLATFORM_RULES.facebook;
-  const paypalLink = generatePayPalLink(campaignTitle);
   const ifCampaignUrl = generateIFCampaignUrl(campaignId);
   const listingTitle = truncateTitle(campaignTitle, rules.maxTitleLength);
   const baseDescription = customMessage?.trim() || campaignSummary?.trim() || "We're raising funds to make a real difference in our community.";
@@ -179,14 +178,13 @@ function buildPlatformListing({
     baseDescription,
     "",
     "How funds are handled:",
-    "• Donations are received on this platform",
-    "• Interplanetary Fund coordinates transfer to IF PayPal business account",
-    "• IF processing: 5% platform fee + 2.9% + $0.30",
-    "• Net funds are paid to the campaign owner via CashApp ($unrewound) or PayPal",
+    "• External platforms are outreach-only",
+    "• All donations are completed in the Interplanetary Fund app",
+    "• IF processing: 5% platform fee + 2.9%",
+    "• Net funds are paid to the campaign owner after fees are deducted",
     "",
     organizerLine,
-    `Campaign page: ${ifCampaignUrl}`,
-    rules.allowsPayPalLink ? `IF PayPal donate link: ${paypalLink}` : "IF PayPal donate link: Not included on this platform",
+    `Donate in IF app: ${ifCampaignUrl}`,
   ].join("\n");
 
   return {
@@ -194,9 +192,9 @@ function buildPlatformListing({
     normalizedPlatform: normalized,
     listingTitle,
     description,
-    paypalLink: rules.allowsPayPalLink ? paypalLink : undefined,
+    paypalLink: undefined,
     ifCampaignUrl,
-    hasPayPalLink: rules.allowsPayPalLink,
+    hasPayPalLink: false,
     requirements: {
       maxTitleLength: rules.maxTitleLength,
       imageRequirement: rules.imageRequirement,
@@ -215,7 +213,6 @@ export const generatePostContent = mutation({
     customMessage: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const paypalLink = generatePayPalLink(args.campaignTitle);
     const ifCampaignUrl = generateIFCampaignUrl(args.campaignId);
 
     let content = args.customMessage || "";
@@ -225,7 +222,7 @@ export const generatePostContent = mutation({
     }
 
     // ALWAYS use IF app URL — funds must route through IF (issue #8)
-    const donationBlock = `\n\n💝 Donate now: ${ifCampaignUrl}\nOr via PayPal: ${paypalLink}\nThank you for your support! 🙏`;
+    const donationBlock = `\n\n💝 Donate in the Interplanetary Fund app: ${ifCampaignUrl}\nThank you for your support! 🙏`;
 
     const fullContent = content + donationBlock;
     const isFacebook = args.platform.toLowerCase().includes("facebook");
@@ -246,13 +243,13 @@ export const generatePostContent = mutation({
 
     return {
       content: fullContent,
-      paypalLink,
+      paypalLink: undefined,
       ifCampaignUrl,
       linkAttachment: isFacebook ? ifCampaignUrl : undefined,
       platform: args.platform,
       campaignId: args.campaignId,
       characterCount: fullContent.length,
-      hasPayPalLink: true,
+      hasPayPalLink: false,
       hasIfUrl: true,
     };
   },
@@ -274,7 +271,6 @@ export const generateFullListing = mutation({
       titleMax: 100, descMax: 3000, allowsDonateLink: true,
     };
 
-    const paypalLink = generatePayPalLink(args.campaignTitle);
     const ifCampaignUrl = generateIFCampaignUrl(args.campaignId);
 
     const title = args.campaignTitle.slice(0, constraints.titleMax);
@@ -284,8 +280,7 @@ export const generateFullListing = mutation({
     description += `Category: ${args.campaignCategory}\n\n`;
     description += `Every contribution makes a difference. Together we can reach this goal!\n\n`;
     if (constraints.allowsDonateLink) {
-      description += `💝 Donate & learn more: ${ifCampaignUrl}\n`;
-      description += `PayPal: ${paypalLink}\n`;
+      description += `💝 Donate in IF app: ${ifCampaignUrl}\n`;
     } else {
       description += `Thank you for your support!`;
     }
@@ -298,7 +293,7 @@ export const generateFullListing = mutation({
       platform: args.platform.toLowerCase(),
       postType: "full_listing",
       content: description,
-      paypalLink,
+      paypalLink: undefined,
       ifCampaignUrl,
       listingType: "full_listing",
       status: "pending",
@@ -325,7 +320,7 @@ export const generateFullListing = mutation({
       title,
       description,
       ifCampaignUrl,
-      paypalLink: constraints.allowsDonateLink ? paypalLink : null,
+      paypalLink: null,
       platform: args.platform,
       characterCount: description.length,
       withinLimits: description.length <= constraints.descMax,
@@ -342,21 +337,20 @@ export const fixDistributedPostUrls = mutation({
     for (const post of posts) {
       const hasBase44Url = textContainsHost(post.content, BASE44_APP_HOST);
       const missingIfUrl = !textContainsHost(post.content, IF_APP_HOST);
-      if (hasBase44Url || missingIfUrl) {
+      const hasPayPalLink = /paypal\.com\/donate/i.test(post.content || "");
+      if (hasBase44Url || missingIfUrl || hasPayPalLink) {
         const ifUrl = generateIFCampaignUrl(post.campaignId);
-        let newContent = post.content || "";
+        let newContent = stripLegacyDonationLinks(post.content || "");
         // Replace any Base44 URL
-        newContent = newContent.replace(
-          /https:\/\/base44-dispatcher-production\.base44\.workers\.dev\/campaign\/[^\s\n]*/g,
-          ifUrl
-        );
+        newContent = newContent.replace(/https:\/\/base44-dispatcher-production\.base44\.workers\.dev\/campaign\/[^\s\n]*/g, ifUrl);
         // If still no IF app URL, append it
         if (!textContainsHost(newContent, IF_APP_HOST)) {
-          newContent += `\n\n🔗 Campaign page: ${ifUrl}`;
+          newContent += `\n\n💝 Donate in IF app: ${ifUrl}`;
         }
         await ctx.db.patch(post._id, {
           content: newContent,
           ifCampaignUrl: ifUrl,
+          paypalLink: undefined,
         });
         fixed++;
       }
@@ -365,53 +359,56 @@ export const fixDistributedPostUrls = mutation({
   },
 });
 
-// Check all existing DistributedPosts for missing PayPal links or wrong URLs
+// Check all existing DistributedPosts for IF-routing compliance
 export const auditPostLinks = query({
   args: {},
   handler: async (ctx) => {
     const posts = await ctx.db.query("distributedPosts").collect();
-    const missingPaypal = posts.filter((p) => {
-      const rules = PLATFORM_RULES[normalizePlatform(p.platform)] || PLATFORM_RULES.facebook;
-      if (!rules.allowsPayPalLink) return false;
-      return !p.content || !p.content.includes("paypal.com/donate");
-    });
+    const missingIfRoute = posts.filter((p) => !textContainsHost(p.content, IF_APP_HOST));
+    const containsPayPal = posts.filter((p) => /paypal\.com\/donate/i.test(p.content || ""));
     const wrongUrl = posts.filter(
       (p) => textContainsHost(p.content, BASE44_APP_HOST)
     );
     return {
       totalPosts: posts.length,
-      postsWithPayPalLink: posts.length - missingPaypal.length,
-      postsMissingLinks: missingPaypal.map((p) => ({
+      postsWithIfLink: posts.length - missingIfRoute.length,
+      postsMissingLinks: missingIfRoute.map((p) => ({
         id: p._id, campaign: p.campaignTitle || p.campaignId,
-        platform: p.platform, action: "needs_regen",
+        platform: p.platform, action: "needs_if_link",
       })),
+      postsWithPayPalLinks: containsPayPal.length,
       postsWithWrongUrl: wrongUrl.length,
-      action: wrongUrl.length > 0 ? "run fixDistributedPostUrls" : "all_good",
+      action: (wrongUrl.length > 0 || containsPayPal.length > 0 || missingIfRoute.length > 0)
+        ? "run fixDistributedPostUrls"
+        : "all_good",
     };
   },
 });
 
-// Fix posts that are missing PayPal links by appending them
+// Backward-compatible maintenance hook: normalize old posts to IF-only donation routing
 export const fixMissingPayPalLinks = mutation({
   args: {},
   handler: async (ctx) => {
     const posts = await ctx.db.query("distributedPosts").collect();
-    const missingLinks = posts.filter((p) => {
-      const rules = PLATFORM_RULES[normalizePlatform(p.platform)] || PLATFORM_RULES.facebook;
-      if (!rules.allowsPayPalLink) return false;
-      return !p.content || !p.content.includes("paypal.com/donate");
+    const candidates = posts.filter((p) => {
+      const missingIfRoute = !textContainsHost(p.content, IF_APP_HOST);
+      const hasLegacyPayPal = /paypal\.com\/donate/i.test(p.content || "");
+      const hasLegacyBase44 = textContainsHost(p.content, BASE44_APP_HOST);
+      return missingIfRoute || hasLegacyPayPal || hasLegacyBase44;
     });
 
     let fixed = 0;
-    for (const post of missingLinks) {
-      const campaignTitle = post.campaignTitle || "Interplanetary Fund";
-      const link = generatePayPalLink(campaignTitle);
+    for (const post of candidates) {
       const ifUrl = generateIFCampaignUrl(post.campaignId);
-      const donationBlock = `\n\n💝 Donate now: ${ifUrl}\nPayPal: ${link}\nThank you! 🙏`;
+      let normalized = stripLegacyDonationLinks(post.content || "");
+      if (!textContainsHost(normalized, IF_APP_HOST)) {
+        normalized += `\n\n💝 Donate in IF app: ${ifUrl}\nThank you! 🙏`;
+      }
 
       await ctx.db.patch(post._id, {
-        content: (post.content || "") + donationBlock,
+        content: normalized,
         ifCampaignUrl: ifUrl,
+        paypalLink: undefined,
       });
       fixed++;
     }

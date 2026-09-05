@@ -11,13 +11,11 @@ import { api } from "../../convex/_generated/api";
 interface PayPalDonateButtonProps {
   campaignId: string;
   campaignTitle: string;
-  businessEmail?: string;
 }
 
 export function PayPalDonateButton({
   campaignId,
   campaignTitle,
-  businessEmail = "interplanetarysister@gmail.com",
 }: PayPalDonateButtonProps) {
   const [amount, setAmount] = useState("");
   const [donorName, setDonorName] = useState("");
@@ -44,15 +42,8 @@ export function PayPalDonateButton({
       });
       window.open(session.checkoutUrl, "_blank");
     } catch (error) {
-      console.error("Checkout session failed; opening direct PayPal link without platform tracking.", error);
-      const paypalUrl = new URL("https://www.paypal.com/donate");
-      paypalUrl.searchParams.set("cmd", "_donations");
-      paypalUrl.searchParams.set("business", businessEmail);
-      paypalUrl.searchParams.set("item_name", `${campaignTitle} - Interplanetary Fund`);
-      paypalUrl.searchParams.set("amount", donationAmount.toString());
-      paypalUrl.searchParams.set("currency_code", "USD");
-      paypalUrl.searchParams.set("custom", campaignId);
-      window.open(paypalUrl.toString(), "_blank");
+      console.error("Checkout session failed.", error);
+      alert("Donation checkout is temporarily unavailable. Please try again in a moment.");
     } finally {
       setIsProcessing(false);
     }
