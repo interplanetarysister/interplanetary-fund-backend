@@ -10,7 +10,7 @@ export function normalizeOptionalText(value?: string) {
 }
 
 const BUSINESS_EMAIL = "interplanetarysister@gmail.com";
-export const PLATFORM_BASE_URL = "https://interplanetary-fund.vercel.app";
+export const PLATFORM_BASE_URL = "https://interplanetary-fund-2bip.vercel.app";
 
 export function generatePayPalLink(campaignTitle: string): string {
   const params = new URLSearchParams({
