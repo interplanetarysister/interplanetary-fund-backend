@@ -7,6 +7,7 @@
 import { mutation, query } from "./_generated/server";
 import { validateDonation, checkRateLimit } from "./security";
 import { v } from "convex/values";
+import { buildPayPalCheckoutUrl, createPayPalConfirmationPlan } from "./paypalCheckoutLogic";
 
 // Create a PayPal checkout session (returns redirect URL)
 export const createCheckoutSession = mutation({
@@ -39,18 +40,14 @@ export const createCheckoutSession = mutation({
 
     // PayPal Donate URL (simplest integration - no SDK needed)
     // Business account: interplanetarysister@gmail.com
-    const paypalUrl = new URL("https://www.paypal.com/donate");
-    paypalUrl.searchParams.set("cmd", "_donations");
-    paypalUrl.searchParams.set("business", "interplanetarysister@gmail.com");
-    paypalUrl.searchParams.set("item_name", args.campaignTitle);
-    paypalUrl.searchParams.set("amount", args.amount.toString());
-    paypalUrl.searchParams.set("currency_code", "USD");
-    // Custom field tracks the donation ID for reconciliation
-    paypalUrl.searchParams.set("custom", donationId);
-
     return {
       donationId,
-      checkoutUrl: paypalUrl.toString(),
+      checkoutUrl: buildPayPalCheckoutUrl({
+        business: "interplanetarysister@gmail.com",
+        campaignTitle: args.campaignTitle,
+        amount: args.amount,
+        donationId,
+      }),
     };
   },
 });
@@ -69,79 +66,35 @@ export const confirmDonation = mutation({
     }
     const now = new Date().toISOString();
     const donation = await ctx.db.get(args.donationId);
-    if (!donation) {
-      throw new Error("Donation not found");
-    }
-    const hasConfirmedStatus = donation.status === "confirmed" || donation.status === "completed";
-    if (donation.confirmedAt && !hasConfirmedStatus) {
-      throw new Error("Donation confirmation state is inconsistent. Please investigate before retrying.");
-    }
-    if (hasConfirmedStatus) {
-      if (donation.providerTransactionId && donation.providerTransactionId !== paypalTransactionId) {
-        throw new Error("Donation already confirmed with a different PayPal transaction ID.");
-      }
-      const patch: Record<string, string> = {};
-      if (!donation.providerTransactionId) {
-        patch.providerTransactionId = paypalTransactionId;
-      }
-      if (!donation.confirmedAt) patch.confirmedAt = now;
-      if (Object.keys(patch).length > 0) {
-        patch.updatedAt = now;
-        await ctx.db.patch(args.donationId, patch);
-      }
-      return { status: "success", alreadyConfirmed: true, summary: { donation: donation.amount } };
-    }
-
-    // Mark donation as completed
-    await ctx.db.patch(args.donationId, {
-      status: "confirmed",
-      providerTransactionId: paypalTransactionId,
-      provider: "paypal",
-      updatedAt: now,
-      confirmedAt: now,
-    });
-
-    // Update campaign raised amount
     const campaign = await ctx.db
       .query("monitoredCampaigns")
-      .withIndex("byIfId", (q) => q.eq("ifCampaignId", donation.campaignId))
+      .withIndex("byIfId", (q) => q.eq("ifCampaignId", donation?.campaignId || ""))
       .first();
+    const feeConfig = await ctx.db.query("feeConfig").filter((q) => q.eq("active", true)).first();
+    const confirmationPlan = createPayPalConfirmationPlan({
+      donation,
+      campaign,
+      paypalTransactionId,
+      now,
+      feeConfig,
+    });
 
-    if (campaign) {
-      await ctx.db.patch(campaign._id, {
-        raisedAmount: (campaign.raisedAmount || 0) + donation.amount,
-        donorCount: (campaign.donorCount || 0) + 1,
-        lastSynced: new Date().toISOString(),
-      });
+    if (Object.keys(confirmationPlan.donationPatch).length > 0) {
+      await ctx.db.patch(args.donationId, confirmationPlan.donationPatch);
     }
 
-    // Record transaction in treasury
-    const platformFee = donation.amount * 0.05;
-    const processingFee = donation.amount * 0.029 + 0.30;
-    const netAmount = donation.amount - platformFee - processingFee;
+    if (campaign && confirmationPlan.campaignPatch) {
+      await ctx.db.patch(campaign._id, confirmationPlan.campaignPatch);
+    }
 
-    await ctx.db.insert("transactions", {
-      userId: donation.campaignId,
-      type: "donation_received",
-      amount: donation.amount,
-      status: "confirmed",
-      createdAt: now,
-      paymentMethod: "paypal",
-      paymentProvider: "paypal",
-      currency: "USD",
-      providerTransactionId: paypalTransactionId,
-      donationId: donation._id,
-      paymentReference: donation.paymentReference,
-    });
+    if (confirmationPlan.transactionRecord) {
+      await ctx.db.insert("transactions", confirmationPlan.transactionRecord);
+    }
 
     return {
       status: "success",
-      summary: {
-        donation: donation.amount,
-        platformFee: platformFee.toFixed(2),
-        processingFee: processingFee.toFixed(2),
-        netAmount: netAmount.toFixed(2),
-      },
+      alreadyConfirmed: confirmationPlan.alreadyConfirmed,
+      summary: confirmationPlan.summary,
     };
   },
 });
