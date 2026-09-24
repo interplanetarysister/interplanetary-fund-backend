@@ -61,6 +61,7 @@ const ROLE_COLORS: Record<string, string> = {
   analytics: "badge-purple",
   treasury: "badge-amber",
   platform_sync: "badge-green",
+  platform_intelligence: "badge-purple",
 };
 
 export default function Admin({ adminUser }: { adminUser: { name: string; role: string; permissions: string[] } | null }) {

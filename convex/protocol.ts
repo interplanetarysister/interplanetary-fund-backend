@@ -11,11 +11,81 @@ import { v } from "convex/values";
 // PROTOCOL ENFORCEMENT (Credit-Free — runs as code)
 // =====================================================
 
+const formatUsd = (value: number) => `$${value.toFixed(2)}`;
+
+type TrainingCampaign = {
+  ifCampaignId: string;
+  title: string;
+  status: string;
+  category: string;
+  summary: string;
+  outreachEnabled: boolean;
+  paymentActive: boolean;
+  storyPresent: boolean;
+  coverImagePresent: boolean;
+  aiIdealDonors: string;
+  aiPlatforms: string;
+  aiTone: string;
+  aiInterestedOrgs: string;
+  endDate: string;
+  goalAmount: number;
+  externalRaised?: number;
+  donorCount: number;
+  raisedAmount: number;
+};
+
+type ExternalPlatformConnection = {
+  platform: string;
+  externalTotal?: number;
+  externalDonorCount?: number;
+};
+
+const buildPlatformInsights = (platforms: ExternalPlatformConnection[]) => {
+  const byPlatform = new Map<string, { platform: string; externalRaised: number; donorCount: number; connectedCampaigns: number }>();
+
+  for (const platform of platforms) {
+    const key = platform.platform || "unknown";
+    const existing = byPlatform.get(key) || {
+      platform: key,
+      externalRaised: 0,
+      donorCount: 0,
+      connectedCampaigns: 0,
+    };
+    existing.externalRaised += platform.externalTotal || 0;
+    existing.donorCount += platform.externalDonorCount || 0;
+    existing.connectedCampaigns += 1;
+    byPlatform.set(key, existing);
+  }
+
+  return Array.from(byPlatform.values()).sort((a, b) => b.externalRaised - a.externalRaised);
+};
+
+const buildSuccessPatterns = (campaigns: TrainingCampaign[]) => {
+  const successfulCampaigns = campaigns.filter((c) => (c.externalRaised || 0) > 0 || (c.raisedAmount || 0) > 0);
+  if (successfulCampaigns.length === 0) {
+    return ["No successful campaign data yet — prioritize baseline campaign instrumentation this week."];
+  }
+
+  const withStory = successfulCampaigns.filter((c) => c.storyPresent).length;
+  const withAiAudience = successfulCampaigns.filter((c) => !!c.aiIdealDonors && !!c.aiPlatforms).length;
+  const withTimeline = successfulCampaigns.filter((c) => !!c.endDate).length;
+  const avgGoal = successfulCampaigns.reduce((sum, c) => sum + (c.goalAmount || 0), 0) / successfulCampaigns.length;
+  const avgExternalRaised =
+    successfulCampaigns.reduce((sum, c) => sum + (c.externalRaised || 0), 0) / successfulCampaigns.length;
+
+  return [
+    `${withStory}/${successfulCampaigns.length} successful campaigns have complete stories.`,
+    `${withAiAudience}/${successfulCampaigns.length} successful campaigns define AI donor targets and platform plans.`,
+    `${withTimeline}/${successfulCampaigns.length} successful campaigns include a target timeline/end date.`,
+    `Average successful campaign goal is ${formatUsd(avgGoal)} with ${formatUsd(avgExternalRaised)} raised from connected platforms.`,
+  ];
+};
+
 // Query: Run full protocol audit (callable from client or cron)
 export const enforceProtocol = query({
   args: {},
   handler: async (ctx) => {
-    const campaigns = await ctx.db.query("monitoredCampaigns").collect();
+    const campaigns = (await ctx.db.query("monitoredCampaigns").collect()) as TrainingCampaign[];
 
     const results: any[] = [];
     let compliantCount = 0;
@@ -130,8 +200,14 @@ export const weeklyTraining = internalMutation({
 
       if (!campaign.outreachEnabled) violations.push({ standard: "P-1", issue: "Outreach disabled" });
 
-      const missingAi = ["aiTone", "aiIdealDonors", "aiInterestedOrgs", "aiPlatforms"]
-        .filter((f) => !campaign[f as keyof typeof campaign] || (campaign[f as keyof typeof campaign] as string) === "");
+      const missingAi = [
+        { field: "aiTone", value: campaign.aiTone },
+        { field: "aiIdealDonors", value: campaign.aiIdealDonors },
+        { field: "aiInterestedOrgs", value: campaign.aiInterestedOrgs },
+        { field: "aiPlatforms", value: campaign.aiPlatforms },
+      ]
+        .filter(({ value }) => !value || value === "")
+        .map(({ field }) => field);
       if (missingAi.length > 0) violations.push({ standard: "P-2", missing: missingAi });
 
       if (!campaign.storyPresent) violations.push({ standard: "P-3", issue: "No story" });
@@ -157,6 +233,29 @@ export const weeklyTraining = internalMutation({
     const totalGoal = campaigns.reduce((s, c) => s + (c.goalAmount || 0), 0);
     const totalDonors = campaigns.reduce((s, c) => s + (c.donorCount || 0), 0);
     const criticalViolations = allViolations.filter((v) => v.severity === "critical");
+    const connectedPlatforms = (await ctx.db.query("externalPlatforms").collect()) as ExternalPlatformConnection[];
+    const platformInsights = buildPlatformInsights(connectedPlatforms);
+    const topPlatformInsights = platformInsights.slice(0, 3);
+    const successPatterns = buildSuccessPatterns(campaigns);
+    const topSuccessPatterns = successPatterns.slice(0, 2);
+    const successPatternSummary = topSuccessPatterns.join(" | ");
+    const topPlatformSummary = topPlatformInsights.length > 0
+      ? topPlatformInsights.map((p) => `${p.platform}: ${formatUsd(p.externalRaised)} from ${p.donorCount} donors`).join("; ")
+      : "No connected platform totals available.";
+    const learningQuestions = [
+      "Which campaign categories are converting best on each connected platform this week?",
+      "What posting cadence and message style are shared by campaigns with the fastest donation velocity?",
+      "Where are donors dropping off between story engagement and completed donation, and what can we remove this week?",
+      "Which platform currently has the highest externalRaised-to-donor ratio and how can we replicate it across active campaigns?",
+    ];
+    const topLearningQuestions = learningQuestions.slice(0, 2);
+    const trainingItinerary = [
+      `Platform scan: review top performers and donation totals (${topPlatformSummary}).`,
+      `Success pattern review: compare active campaigns to winning traits (${successPatternSummary}).`,
+      "Experiment planning: define one conversion test per active campaign focused on story clarity, donor targeting, or payment flow.",
+      "Cross-agent alignment: share recommendations with strategy, growth, and communications agents and assign owners.",
+      "Memory update: record outcomes, open questions, and next-week hypotheses in long-term memory.",
+    ];
 
     // Step 2: Update all agents' training memory
     const agents = await ctx.db.query("agents").collect();
@@ -164,10 +263,20 @@ export const weeklyTraining = internalMutation({
 
     for (const agent of agents) {
       const memory = agent.longTermMemory || [];
-      await ctx.db.patch(agent._id, {
-        longTermMemory: [...memory.slice(-9), trainingUpdate],
-        workingMemory: [`Latest: ${compliantCount} compliant, ${nonCompliantCount} non-compliant. Critical: ${criticalViolations.length}.`],
-      });
+      const baseWorkingMemory = `Latest: ${compliantCount} compliant, ${nonCompliantCount} non-compliant. Critical: ${criticalViolations.length}.`;
+
+      if (agent.role === "platform_intelligence") {
+        const intelligenceUpdate = `${trainingUpdate} Top platforms: ${topPlatformSummary}. Success patterns: ${topSuccessPatterns.join(" | ")}. Key questions: ${topLearningQuestions.join(" | ")}`;
+        await ctx.db.patch(agent._id, {
+          longTermMemory: [...memory.slice(-9), intelligenceUpdate],
+          workingMemory: [baseWorkingMemory, ...trainingItinerary.slice(0, 2), `Question focus: ${learningQuestions[0]}`],
+        });
+      } else {
+        await ctx.db.patch(agent._id, {
+          longTermMemory: [...memory.slice(-9), trainingUpdate],
+          workingMemory: [baseWorkingMemory],
+        });
+      }
     }
 
     // Step 3: Create protocol report
@@ -182,6 +291,9 @@ export const weeklyTraining = internalMutation({
       fundingGap: totalGoal - totalRaised,
       totalDonors,
       criticalViolations,
+      trainingItinerary,
+      learningQuestions,
+      platformInsights: topPlatformInsights,
       results: results.map((r) => ({ title: r.title, complianceScore: r.complianceScore, violations: r.violations })),
       syncPerformed: false,
     });
