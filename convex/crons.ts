@@ -14,7 +14,7 @@ import { internal } from "./_generated/api";
 // 6am Pacific = 13:00 UTC (during PDT)
 // Saturday 2am Pacific = 09:00 UTC Saturday (during PDT)
 // 8am Pacific = 15:00 UTC (during PDT) — daily post generation
-// Hourly sync = :00 every hour UTC
+// No hourly sync cron is registered in this file.
 
 const crons = cronJobs();
 
