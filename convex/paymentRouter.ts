@@ -4,7 +4,7 @@
  * express written permission. See LICENSE file for full terms.
  */
 
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { checkRateLimit, validateDonation } from "./security";
 
@@ -12,6 +12,8 @@ const USD_CURRENCY = "USD";
 const BTC_CURRENCY = "BTC";
 const SATOSHIS_PER_BTC = 100_000_000;
 const ONE_SATOSHI_BTC = 1 / SATOSHIS_PER_BTC;
+const CENTS_MULTIPLIER = 100;
+const CONVEX_ID_PATTERN = /^[a-z0-9]{20,40}$/i;
 
 type PaymentMethod = "paypal" | "cashapp" | "bitcoin";
 
@@ -76,6 +78,18 @@ function getEnabledMethods(config: PaymentConfig) {
 
 function createPaymentReference() {
   return `pay_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeText(value?: string) {
+  return (value || "").trim();
+}
+
+function toCents(amount: number) {
+  return Math.round(amount * CENTS_MULTIPLIER);
+}
+
+function isLikelyConvexId(value: string) {
+  return CONVEX_ID_PATTERN.test(value);
 }
 
 function getBitcoinUri(address: string, btcAmount: number, reference: string, campaignTitle: string) {
@@ -147,26 +161,37 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
     return { status: "already_confirmed" };
   }
 
-  const now = new Date().toISOString();
-  await ctx.db.patch(donation._id, {
-    status: "confirmed",
-    confirmedAt: now,
-    providerTransactionId: providerTransactionId || donation.providerTransactionId,
-    updatedAt: now,
-  });
-
   const campaign = await ctx.db
     .query("monitoredCampaigns")
     .withIndex("byIfId", (q: any) => q.eq("ifCampaignId", donation.campaignId))
     .first();
 
-  if (campaign) {
-    await ctx.db.patch(campaign._id, {
-      raisedAmount: (campaign.raisedAmount || 0) + donation.amount,
-      donorCount: (campaign.donorCount || 0) + 1,
-      lastSynced: now,
-    });
+  if (!campaign) {
+    throw new Error("Campaign not found for donation confirmation.");
   }
+
+  const feeConfig = await ctx.db.query("feeConfig").filter((q: any) => q.eq("active", true)).first();
+  const platformFeePercentSnapshot = feeConfig?.platformFeePercent ?? 5;
+  const processingFeePercentSnapshot = feeConfig?.processingFeePercent ?? 2.9;
+  const processingFeeFlatSnapshot = feeConfig?.processingFeeFlat ?? 0.30;
+
+  const now = new Date().toISOString();
+  await ctx.db.patch(donation._id, {
+    status: "confirmed",
+    cleared: true,
+    platformFeePercentSnapshot,
+    processingFeePercentSnapshot,
+    processingFeeFlatSnapshot,
+    feeDeductionTiming: "payout_time",
+    confirmedAt: now,
+    providerTransactionId: providerTransactionId || donation.providerTransactionId,
+    updatedAt: now,
+  });
+
+  await ctx.db.patch(campaign._id, {
+    raisedAmount: (campaign.raisedAmount || 0) + donation.amount,
+    donorCount: (campaign.donorCount || 0) + 1,
+  });
 
   await ctx.db.insert("transactions", {
     userId: donation.campaignId,
@@ -182,6 +207,10 @@ async function applyDonationConfirmation(ctx: any, donation: any, providerTransa
     providerTransactionId: providerTransactionId || donation.providerTransactionId,
     donationId: donation._id,
     paymentReference: donation.paymentReference,
+    platformFeePercentSnapshot,
+    processingFeePercentSnapshot,
+    processingFeeFlatSnapshot,
+    feeDeductionTiming: "payout_time",
   });
 
   return { status: "confirmed" };
@@ -225,12 +254,28 @@ export const createDonationIntent = mutation({
       throw new Error(`Payment method '${args.paymentMethod}' is not configured.`);
     }
 
+    const requestedCampaignTitle = normalizeText(args.campaignTitle);
+    const requestedDonorName = normalizeText(args.donorName) || "Anonymous";
+    const requestedMessage = normalizeText(args.message);
+    const requestedAmountCents = toCents(args.amountUSD);
+
     if (args.idempotencyKey) {
       const existing = await ctx.db
         .query("donations")
         .withIndex("byIdempotencyKey", (q: any) => q.eq("idempotencyKey", args.idempotencyKey))
         .first();
       if (existing) {
+        const sameRequest =
+          existing.campaignId === args.campaignId &&
+          normalizeText(existing.campaignTitle) === requestedCampaignTitle &&
+          existing.paymentMethod === args.paymentMethod &&
+          toCents(existing.amount || 0) === requestedAmountCents &&
+          (normalizeText(existing.donorName) || "Anonymous") === requestedDonorName &&
+          normalizeText(existing.message) === requestedMessage;
+        if (!sameRequest) {
+          throw new Error("Idempotency key already used with different donation parameters.");
+        }
+
         return {
           donationId: existing._id,
           paymentReference: existing.paymentReference,
@@ -249,10 +294,10 @@ export const createDonationIntent = mutation({
 
     const baseDonation: any = {
       campaignId: args.campaignId,
-      campaignTitle: args.campaignTitle,
+      campaignTitle: requestedCampaignTitle,
       amount: args.amountUSD,
-      donorName: args.donorName || "Anonymous",
-      message: args.message || "",
+      donorName: requestedDonorName,
+      message: requestedMessage,
       paymentMethod: args.paymentMethod,
       provider: selected.provider,
       currency: USD_CURRENCY,
@@ -337,7 +382,146 @@ export const createDonationIntent = mutation({
   },
 });
 
-export const confirmExternalDonation = mutation({
+export const recordPayPalPaymentSuccess = internalMutation({
+  args: {
+    paymentReference: v.string(),
+    currency: v.string(),
+    amount: v.number(),
+    donorName: v.optional(v.string()),
+    receiverEmail: v.optional(v.string()),
+    providerTransactionId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (!validateDonation(args.amount)) {
+      throw new Error("Invalid donation amount. Must be between $0.01 and $100,000.");
+    }
+
+    const paymentReference = args.paymentReference.trim();
+    if (!paymentReference) {
+      throw new Error("Payment reference is required.");
+    }
+
+    const providerTransactionId = args.providerTransactionId.trim();
+    if (!providerTransactionId) {
+      throw new Error("PayPal transaction ID is required.");
+    }
+
+    checkRateLimit(`paypal_ipn:${paymentReference}:${providerTransactionId}`, 20, 60000);
+
+    const callbackCurrency = args.currency.trim().toUpperCase();
+    if (callbackCurrency !== USD_CURRENCY) {
+      throw new Error("Unsupported donation currency for PayPal callback.");
+    }
+    const callbackAmountCents = toCents(args.amount);
+
+    const paypalBusinessEmail = (process.env.PAYPAL_BUSINESS_EMAIL || "").trim().toLowerCase();
+    const receiverEmail = (args.receiverEmail || "").trim().toLowerCase();
+    if (!paypalBusinessEmail) {
+      throw new Error("PayPal merchant receiver identity is not configured.");
+    }
+    if (!receiverEmail) {
+      throw new Error("PayPal callback receiver email is required.");
+    }
+    if (receiverEmail !== paypalBusinessEmail) {
+      throw new Error("PayPal receiver email mismatch.");
+    }
+
+    let donation = await ctx.db
+      .query("donations")
+      .withIndex("byPaymentReference", (q: any) => q.eq("paymentReference", paymentReference))
+      .first();
+
+    if (!donation && isLikelyConvexId(paymentReference)) {
+      const donationById = await ctx.db.get(paymentReference as any);
+      if (
+        donationById &&
+        donationById.paymentMethod === "paypal" &&
+        donationById.provider === "paypal" &&
+        !donationById.paymentReference &&
+        donationById.status === "pending" &&
+        toCents(donationById.amount || 0) === callbackAmountCents &&
+        (donationById.currency || USD_CURRENCY).toUpperCase() === callbackCurrency
+      ) {
+        donation = donationById;
+      }
+    }
+
+    if (!donation) {
+      throw new Error("Donation intent not found for payment reference.");
+    }
+
+    if (donation.paymentMethod !== "paypal" || donation.provider !== "paypal") {
+      throw new Error("Payment reference is not a PayPal donation intent.");
+    }
+    if (donation.providerTransactionId && donation.providerTransactionId !== providerTransactionId) {
+      throw new Error("PayPal transaction ID does not match the existing donation intent binding.");
+    }
+
+    const duplicate = await ctx.db
+      .query("donations")
+      .withIndex("byProviderTransactionId", (q: any) => q.eq("providerTransactionId", providerTransactionId))
+      .first();
+    const duplicateLedger = await ctx.db
+      .query("transactions")
+      .withIndex("byProviderTransactionId", (q: any) => q.eq("providerTransactionId", providerTransactionId))
+      .first();
+
+    if (duplicate && duplicate._id !== donation._id) {
+      return {
+        status: "duplicate_transaction",
+        duplicateDonationId: duplicate._id,
+      };
+    }
+    if (duplicateLedger && duplicateLedger.donationId && duplicateLedger.donationId !== donation._id) {
+      return {
+        status: "duplicate_transaction",
+        duplicateDonationId: duplicateLedger.donationId,
+      };
+    }
+    if (duplicateLedger && !duplicateLedger.donationId) {
+      return { status: "already_settled" };
+    }
+    if (duplicateLedger && duplicateLedger.donationId === donation._id) {
+      return {
+        status: "already_settled",
+        donationId: donation._id,
+      };
+    }
+
+    if (donation.confirmedAt) {
+      if (donation.providerTransactionId && donation.providerTransactionId !== providerTransactionId) {
+        throw new Error("Donation already confirmed with a different PayPal transaction ID.");
+      }
+      return { status: "already_confirmed", donationId: donation._id };
+    }
+
+    const storedCurrency = (donation.currency || USD_CURRENCY).toUpperCase();
+    if (storedCurrency !== callbackCurrency) {
+      throw new Error("PayPal callback currency does not match donation intent.");
+    }
+
+    if (toCents(donation.amount || 0) !== callbackAmountCents) {
+      throw new Error("PayPal callback amount does not match donation intent.");
+    }
+
+    const result = await applyDonationConfirmation(ctx, donation, providerTransactionId);
+
+    const donorName = args.donorName?.trim();
+    if (donorName && donorName !== donation.donorName) {
+      await ctx.db.patch(donation._id, {
+        donorName,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      status: result.status,
+      donationId: donation._id,
+    };
+  },
+});
+
+export const confirmExternalDonation = internalMutation({
   args: {
     donationId: v.id("donations"),
     providerTransactionId: v.string(),
