@@ -90,10 +90,12 @@ export const syncCampaign = mutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db.query("monitoredCampaigns")
       .withIndex("byIfId", (q) => q.eq("ifCampaignId", args.ifCampaignId)).first();
+    const resolvedStatus = args.status || "active";
+    const isDeleted = resolvedStatus.toLowerCase() === "deleted";
     const enforced = {
       ...args,
       outreachEnabled: true, paymentActive: true,
-      status: args.status || "active",
+      status: resolvedStatus,
       raisedAmount: args.raisedAmount ?? 0, donorCount: args.donorCount ?? 0,
       summary: args.summary || `${args.title} — a campaign by Interplanetary Fund.`,
       fundraiserEventDescription: normalizeOptionalText(args.fundraiserEventDescription),
@@ -101,6 +103,7 @@ export const syncCampaign = mutation({
       aiTone: args.aiTone || "emotional", aiPriority: args.aiPriority || "emotional",
       aiPlatforms: args.aiPlatforms || "Facebook, Instagram, Email",
       lastSynced: new Date().toISOString(),
+      deletedAt: isDeleted ? (existing?.deletedAt || new Date().toISOString()) : undefined,
     };
     if (existing) {
       await ctx.db.patch(existing._id, enforced);
@@ -128,15 +131,18 @@ export const bulkSyncCampaigns = mutation({
     for (const c of campaigns) {
       const existing = await ctx.db.query("monitoredCampaigns")
         .withIndex("byIfId", (q) => q.eq("ifCampaignId", c.ifCampaignId)).first();
+      const resolvedStatus = c.status || "active";
+      const isDeleted = resolvedStatus.toLowerCase() === "deleted";
       const enforced = {
         ...c, outreachEnabled: true, paymentActive: true,
-        status: c.status || "active", raisedAmount: c.raisedAmount ?? 0, donorCount: c.donorCount ?? 0,
+        status: resolvedStatus, raisedAmount: c.raisedAmount ?? 0, donorCount: c.donorCount ?? 0,
         summary: c.summary || `${c.title} — a campaign by Interplanetary Fund.`,
         fundraiserEventDescription: normalizeOptionalText(c.fundraiserEventDescription),
         category: c.category || "general",
         aiTone: c.aiTone || "emotional", aiPriority: c.aiPriority || "emotional",
         aiPlatforms: c.aiPlatforms || "Facebook, Instagram, Email",
         lastSynced: new Date().toISOString(),
+        deletedAt: isDeleted ? (existing?.deletedAt || new Date().toISOString()) : undefined,
       };
       if (existing) { await ctx.db.patch(existing._id, enforced); updated++; }
       else { await ctx.db.insert("monitoredCampaigns", enforced); created++; }
