@@ -14,7 +14,7 @@ import { internal } from "./_generated/api";
 // 6am Pacific = 13:00 UTC (during PDT)
 // Saturday 2am Pacific = 09:00 UTC Saturday (during PDT)
 // 8am Pacific = 15:00 UTC (during PDT) — daily post generation
-// Hourly sync = :00 every hour UTC
+// NOTE: No hourly sync cron is currently registered in this file.
 
 const crons = cronJobs();
 
@@ -54,7 +54,9 @@ crons.daily(
 );
 
 // Daily Raised-Amount Sync — every morning 5am Pacific (12:00 UTC)
-// Aggregates externalPlatforms.externalTotal → monitoredCampaigns.raisedAmount
+// NOTE: This legacy job currently writes external platform totals into
+// monitoredCampaigns.raisedAmount; reconcile with the IF-side source of truth
+// before changing cadence or enabling any additional sync schedule.
 crons.daily(
   "daily-raised-amount-sync",
   { hourUTC: 12, minuteUTC: 0 },
