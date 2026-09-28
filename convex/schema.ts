@@ -400,4 +400,36 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.string(),
   }).index("byKey", ["key"]),
+
+  // FEES — per-transaction fee line items for double-entry ledger
+  fees: defineTable({
+    transactionId: v.id("transactions"),
+    feeType: v.string(),           // "processor_fee" | "platform_fee" | "chargeback" | "fx_conversion"
+    amount: v.number(),             // positive = deduction; negative = refund/reversal
+    currency: v.string(),           // "USD" by default
+    rateUsed: v.optional(v.number()),  // e.g. 0.029 for 2.9%
+    flatAmount: v.optional(v.number()),
+    createdAt: v.string(),
+  }).index("byTransactionId", ["transactionId"])
+    .index("byFeeType", ["feeType"]),
+
+  // ALLOCATIONS — maps gross donation to net destination; core of double-entry ledger
+  allocations: defineTable({
+    transactionId: v.id("transactions"),
+    campaignId: v.optional(v.string()),
+    userId: v.string(),
+    grossAmount: v.number(),
+    totalFees: v.number(),
+    netAmount: v.number(),
+    currency: v.string(),
+    nativeCurrency: v.optional(v.string()),    // original currency if non-USD donation
+    nativeAmount: v.optional(v.number()),       // original amount before FX conversion
+    fxRate: v.optional(v.number()),             // exchange rate applied
+    escrowReleaseAt: v.optional(v.string()),    // ISO timestamp when funds are released from platform hold
+    status: v.string(),   // "allocated" | "payout_pending" | "paid_out" | "reversed"
+    createdAt: v.string(),
+  }).index("byUserId", ["userId"])
+    .index("byCampaignId", ["campaignId"])
+    .index("byStatus", ["status"])
+    .index("byTransactionId", ["transactionId"]),
 });
