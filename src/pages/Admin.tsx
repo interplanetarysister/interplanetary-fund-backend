@@ -797,15 +797,15 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
               <h3 className="text-sm font-semibold text-iftext mb-3">Connected Platforms</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-ifdark rounded-xl p-3">
-                  <p className="text-xs text-ifmuted">External Raised</p>
+                  <p className="text-xs text-ifmuted">Outreach Clicks</p>
                   <p className="text-xl font-bold text-ifcyan mt-1">
-                    ${externalBalances.grandTotalRaised.toLocaleString()}
+                    {(externalBalances.grandTotalClicks ?? 0).toLocaleString()}
                   </p>
                 </div>
                 <div className="bg-ifdark rounded-xl p-3">
-                  <p className="text-xs text-ifmuted">External Donors</p>
+                  <p className="text-xs text-ifmuted">Campaign Links</p>
                   <p className="text-xl font-bold text-ifgreen mt-1">
-                    {externalBalances.grandTotalDonors.toLocaleString()}
+                    {externalBalances.total.toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -818,8 +818,8 @@ export default function Admin({ adminUser }: { adminUser: { name: string; role: 
                         <span className="badge badge-cyan">{data.count} campaigns</span>
                       </div>
                       <div className="flex justify-between text-xs mt-1">
-                        <span className="text-ifmuted">Raised: ${data.totalRaised.toLocaleString()}</span>
-                        <span className="text-ifmuted">{data.totalDonors} donors</span>
+                        <span className="text-ifmuted">{data.totalClicks ?? 0} clicks</span>
+                        <span className="text-ifmuted">{data.count} links</span>
                       </div>
                     </div>
                   ))}

@@ -26,39 +26,46 @@ export const syncAllCampaignTotals = mutation({
 async function _syncAll(ctx: any) {
   const campaigns = await ctx.db.query("monitoredCampaigns").collect();
   const connections = await ctx.db.query("externalPlatforms").collect();
+  const donations = await ctx.db.query("donations").collect();
 
   const results = [];
 
   for (const campaign of campaigns) {
-    const platformTotal = connections
-      .filter((c: any) => c.campaignId === campaign.ifCampaignId)
-      .reduce((sum: number, c: any) => sum + (c.externalTotal || 0), 0);
+    const confirmedDonations = donations.filter(
+      (d: any) =>
+        d.campaignId === campaign.ifCampaignId &&
+        (d.status === "confirmed" || d.status === "completed")
+    );
+    const totalRaisedInIf = confirmedDonations.reduce((sum: number, d: any) => sum + (d.amount || 0), 0);
+    const totalDonorsInIf = confirmedDonations.length;
 
-    const platformDonors = connections
+    const outreachClicks = connections
       .filter((c: any) => c.campaignId === campaign.ifCampaignId)
-      .reduce((sum: number, c: any) => sum + (c.externalDonorCount || 0), 0);
+      .reduce((sum: number, c: any) => sum + (c.linkClicks || 0), 0);
 
     const platformCount = connections
       .filter((c: any) => c.campaignId === campaign.ifCampaignId).length;
 
     if (
-      platformTotal !== campaign.raisedAmount ||
-      platformDonors !== campaign.donorCount
+      totalRaisedInIf !== campaign.raisedAmount ||
+      totalDonorsInIf !== campaign.donorCount ||
+      outreachClicks !== campaign.externalDonors
     ) {
       await ctx.db.patch(campaign._id, {
-        raisedAmount: platformTotal,
-        donorCount: platformDonors,
-        externalRaised: platformTotal,
-        externalDonors: platformDonors,
+        raisedAmount: totalRaisedInIf,
+        donorCount: totalDonorsInIf,
+        externalRaised: 0,
+        externalDonors: outreachClicks,
         platformCount,
         lastSynced: new Date().toISOString(),
       });
       results.push({
         campaign: campaign.title,
         oldRaised: campaign.raisedAmount,
-        newRaised: platformTotal,
+        newRaised: totalRaisedInIf,
         oldDonors: campaign.donorCount,
-        newDonors: platformDonors,
+        newDonors: totalDonorsInIf,
+        outreachClicks,
       });
     }
   }
@@ -97,23 +104,24 @@ export const weeklyBalanceCheck = internalMutation({
   args: {},
   handler: async (ctx) => {
     const platforms = await ctx.db.query("externalPlatforms").collect();
-    const platformsWithBalance = platforms.filter(p => (p.externalTotal || 0) > 0);
+    const platformsWithOutreach = platforms.filter(p => (p.linkClicks || 0) > 0);
 
-    const alerts = platformsWithBalance.map(p => ({
+    const alerts = platformsWithOutreach.map(p => ({
       platform: p.platform,
       displayName: p.displayName,
       campaignId: p.campaignId,
-      balance: p.externalTotal,
+      clicks: p.linkClicks || 0,
       lastSynced: p.lastSynced,
-      action: "migrate_funds",
+      action: "optimize_outreach",
     }));
 
     return {
       status: "success",
       checkedAt: new Date().toISOString(),
       platformsChecked: platforms.length,
-      platformsWithBalance: platformsWithBalance.length,
-      totalExternalBalance: platformsWithBalance.reduce((s, p) => s + (p.externalTotal || 0), 0),
+      platformsWithBalance: platformsWithOutreach.length,
+      totalExternalBalance: 0,
+      totalOutreachClicks: platformsWithOutreach.reduce((s, p) => s + (p.linkClicks || 0), 0),
       alerts,
     };
   },

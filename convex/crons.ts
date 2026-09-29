@@ -35,7 +35,7 @@ crons.weekly(
 );
 
 // Daily Auto-Post Generation — 8am Pacific (15:00 UTC)
-// Generates empathetic posts with PayPal + IF app links for all active campaigns
+// Generates empathetic posts with IF app donation routing for all active campaigns
 // Posts are stored as "pending" in distributedPosts for agents to publish
 crons.daily(
   "daily-post-generation",
@@ -54,7 +54,7 @@ crons.daily(
 );
 
 // Daily Raised-Amount Sync — every morning 5am Pacific (12:00 UTC)
-// Aggregates externalPlatforms.externalTotal → monitoredCampaigns.raisedAmount
+// Aggregates IF-app donations → monitoredCampaigns.raisedAmount
 crons.daily(
   "daily-raised-amount-sync",
   { hourUTC: 12, minuteUTC: 0 },
@@ -62,8 +62,8 @@ crons.daily(
   {}
 );
 
-// Weekly External Balance Check — every Sunday 6am Pacific (13:00 UTC Sunday)
-// Detects platforms with non-zero balances and flags for fund migration
+// Weekly External Outreach Check — every Sunday 6am Pacific (13:00 UTC Sunday)
+// Detects platform engagement and flags outreach optimization opportunities
 crons.weekly(
   "weekly-balance-check",
   { dayOfWeek: "sunday", hourUTC: 13, minuteUTC: 0 },

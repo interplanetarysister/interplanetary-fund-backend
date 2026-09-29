@@ -39,6 +39,7 @@ export default function Explore() {
   const [intentResult, setIntentResult] = useState<any | null>(null);
   const [bitcoinQr, setBitcoinQr] = useState("");
   const [verificationResult, setVerificationResult] = useState<any | null>(null);
+  const [handledDeepLink, setHandledDeepLink] = useState(false);
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
@@ -134,14 +135,17 @@ export default function Explore() {
       interactionType: "share",
     }).catch(() => {});
 
+    const shareUrl = new URL(window.location.origin);
+    shareUrl.searchParams.set("campaignId", campaign.ifCampaignId);
+
     if (navigator.share) {
       navigator.share({
         title: campaign.title,
         text: `Support "${campaign.title}" on Interplanetary Fund!`,
-        url: window.location.href,
+        url: shareUrl.toString(),
       }).catch(() => {});
     } else {
-      navigator.clipboard?.writeText(window.location.href).catch(() => {});
+      navigator.clipboard?.writeText(shareUrl.toString()).catch(() => {});
     }
   };
 
@@ -202,6 +206,34 @@ export default function Explore() {
       setVerificationResult({ status: "failed", reason: e?.message || "Verification failed" });
     }
   };
+
+  useEffect(() => {
+    if (handledDeepLink || !campaigns.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const campaignId = params.get("campaignId");
+    if (!campaignId) {
+      setHandledDeepLink(true);
+      return;
+    }
+
+    const deepLinkedCampaign = campaigns.find((c: any) => c.ifCampaignId === campaignId);
+    if (!deepLinkedCampaign) return;
+
+    handleCampaignView(deepLinkedCampaign);
+    recordInteraction({
+      campaignId: deepLinkedCampaign.ifCampaignId,
+      campaignTitle: deepLinkedCampaign.title,
+      interactionType: "click",
+    }).catch(() => {});
+    setSelectedCampaign(deepLinkedCampaign);
+    setDonationAmount("25");
+    setDonorName("");
+    setDonationMessage("");
+    setIntentResult(null);
+    setVerificationResult(null);
+    setDonationStep("amount");
+    setHandledDeepLink(true);
+  }, [campaigns, handledDeepLink]);
 
   return (
     <div className="space-y-5">
