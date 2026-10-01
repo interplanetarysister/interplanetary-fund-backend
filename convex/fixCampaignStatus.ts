@@ -31,6 +31,11 @@ export const fixAllCampaigns = mutation({
       if (!campaign.outreachEnabled) {
         updates.outreachEnabled = true;
       }
+
+      // Set CashApp tag on all campaigns
+      if (campaign.cashappTag !== "$unrewound") {
+        updates.cashappTag = "$unrewound";
+      }
       
       // Generate summary if empty
       if (!campaign.summary || campaign.summary.trim() === "") {
