@@ -8,6 +8,40 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { validateDonation, checkRateLimit } from "./security";
 import { v } from "convex/values";
 
+const PAYOUT_READY_SUBJECT = "Funds ready for payout selection";
+
+function formatUsd(amount: number): string {
+  return `$${amount.toFixed(2)}`;
+}
+
+async function notifyCampaignOwnerPayoutReady(
+  ctx: any,
+  args: {
+    campaignId: string;
+    sourcePlatform: string;
+    grossAmount: number;
+    feeAmount: number;
+    netAmount: number;
+  }
+) {
+  const now = new Date().toISOString();
+  await ctx.db.insert("universalInbox", {
+    platform: "interplanetary_fund",
+    senderName: "Interplanetary Fund",
+    senderId: "if-system",
+    recipientId: args.campaignId,
+    subject: PAYOUT_READY_SUBJECT,
+    body: `Funds from ${args.sourcePlatform} are ready. Gross: ${formatUsd(args.grossAmount)}. Fees: ${formatUsd(args.feeAmount)}. Net payout: ${formatUsd(args.netAmount)}. Select CashApp or PayPal to continue.`,
+    platformMessageId: `fund-migration-${args.campaignId}-${Date.now()}`,
+    campaignId: args.campaignId,
+    status: "new",
+    forwarded: false,
+    replied: false,
+    priority: "high",
+    receivedAt: now,
+  });
+}
+
 // Record a fund migration from an external platform
 export const recordMigration = mutation({
   args: {
@@ -20,7 +54,7 @@ export const recordMigration = mutation({
   },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
+    if (!validateDonation(args.grossAmount)) {
       throw new Error("Invalid amount for fund migration.");
     }
     // Calculate fees
@@ -75,6 +109,13 @@ export const recordMigration = mutation({
       status: "pending_user_selection",
       requestedDate: new Date().toISOString(),
     });
+    await notifyCampaignOwnerPayoutReady(ctx, {
+      campaignId: args.campaignId,
+      sourcePlatform: args.sourcePlatform,
+      grossAmount: args.grossAmount,
+      feeAmount: totalFees,
+      netAmount,
+    });
 
     return {
       status: "success",
@@ -99,10 +140,8 @@ export const getPendingPayouts = query({
   args: { campaignId: v.optional(v.string()) },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     let payouts = await ctx.db.query("payoutRequests").collect();
+    const campaigns = await ctx.db.query("monitoredCampaigns").collect();
     
     if (args.campaignId) {
       payouts = payouts.filter((p) => p.userId === args.campaignId);
@@ -113,6 +152,7 @@ export const getPendingPayouts = query({
       .map((p) => ({
         payoutId: p._id,
         campaignId: p.userId,
+        campaignTitle: campaigns.find((c) => c.ifCampaignId === p.userId)?.title || p.userId,
         grossAmount: p.amountRequested,
         fees: p.feeAmount,
         netAmount: p.netAmount,
@@ -124,15 +164,12 @@ export const getPendingPayouts = query({
 // User selects payout method for their migrated funds
 export const selectPayoutMethod = mutation({
   args: {
-    payoutId: v.string(),
-    payoutMethod: v.string(),
+    payoutId: v.id("payoutRequests"),
+    payoutMethod: v.union(v.literal("cashapp"), v.literal("paypal")),
     payoutDestination: v.string(),
   },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     const payout = await ctx.db.get(args.payoutId);
     if (!payout) {
       throw new Error("Payout not found");
@@ -142,6 +179,16 @@ export const selectPayoutMethod = mutation({
       payoutMethod: args.payoutMethod,
       payoutDestination: args.payoutDestination,
       status: "pending_payout",
+    });
+    await ctx.db.insert("transactions", {
+      userId: payout.userId,
+      campaignId: payout.userId,
+      type: "payout_ready",
+      amount: payout.netAmount,
+      payoutRequestId: args.payoutId,
+      status: "queued",
+      createdAt: new Date().toISOString(),
+      paymentMethod: args.payoutMethod,
     });
 
     return {
@@ -156,9 +203,6 @@ export const getMigrationHistory = query({
   args: { campaignId: v.string() },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     const donations = await ctx.db
       .query("donations")
       .withIndex("byCampaignId", (q) => q.eq("campaignId", args.campaignId))
@@ -190,15 +234,15 @@ export const batchMigrate = mutation({
   },
   handler: async (ctx, args) => {
     checkRateLimit("fund_migration", 5, 300000); // Max 5 per 5 min
-    if (args.amount !== undefined && !validateDonation(args.amount)) {
-      throw new Error("Invalid amount for fund migration.");
-    }
     const results = [];
     let totalGross = 0;
     let totalFees = 0;
     let totalNet = 0;
 
     for (const migration of args.migrations) {
+      if (!validateDonation(migration.grossAmount)) {
+        throw new Error(`Invalid amount for ${migration.sourcePlatform}`);
+      }
       const platformFee = migration.grossAmount * 0.05;
       const processingFee = migration.grossAmount * 0.029 + 0.30;
       const fees = platformFee + processingFee;
@@ -240,6 +284,13 @@ export const batchMigrate = mutation({
         payoutDestination: "pending",
         status: "pending_user_selection",
         requestedDate: new Date().toISOString(),
+      });
+      await notifyCampaignOwnerPayoutReady(ctx, {
+        campaignId: migration.campaignId,
+        sourcePlatform: migration.sourcePlatform,
+        grossAmount: migration.grossAmount,
+        feeAmount: fees,
+        netAmount: net,
       });
 
       totalGross += migration.grossAmount;
@@ -416,6 +467,13 @@ export const checkBalancesAndQueueMigrations = internalMutation({
           requestedDate: now,
           adminReviewStatus: "auto_queued",
           adminReviewNote: `Auto-queued from ${platform.platform}; transaction=${transactionId}; gross=$${grossAmount.toFixed(2)} net=$${netAmount.toFixed(2)}`,
+        });
+        await notifyCampaignOwnerPayoutReady(ctx, {
+          campaignId: platform.campaignId,
+          sourcePlatform: platform.platform,
+          grossAmount,
+          feeAmount: totalFees,
+          netAmount,
         });
 
         // Mark the platform so the next cron run skips it (idempotency guard)

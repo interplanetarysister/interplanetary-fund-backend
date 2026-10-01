@@ -89,11 +89,11 @@ crons.daily(
   {}
 );
 
-// Daily external platform balance check + migration queue — 9am Pacific (16:00 UTC)
+// Weekly external platform balance check + migration queue — Sunday 9am Pacific (16:00 UTC)
 // Scans externalPlatforms for positive balances and queues fund migrations
-crons.daily(
-  "daily-platform-balance-check",
-  { hourUTC: 16, minuteUTC: 0 },
+crons.weekly(
+  "weekly-platform-migration-queue",
+  { dayOfWeek: "sunday", hourUTC: 16, minuteUTC: 0 },
   internal.fundMigration.checkBalancesAndQueueMigrations,
   {}
 );

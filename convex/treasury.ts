@@ -285,22 +285,38 @@ export const completePayout = mutation({
     checkRateLimit("payout_complete", 5, 300000);
     const payout = await ctx.db.get(args.payoutId);
     if (!payout) throw new Error("Payout request not found");
-    if (payout.status !== "pending") throw new Error(`Payout already ${payout.status}`);
+    if (payout.status !== "pending" && payout.status !== "pending_payout") {
+      throw new Error(`Payout already ${payout.status}`);
+    }
     // SUPER ADMIN APPROVAL REQUIRED — no payout can complete without explicit approval
-    if (payout.adminReviewStatus !== "approved") {
+    if (payout.status === "pending" && payout.adminReviewStatus !== "approved") {
       throw new Error("Payout requires super admin approval before completion. Use the Fraud Control panel to approve.");
     }
-    if (payout.adminReviewStatus === "denied") {
+    if (payout.status === "pending" && payout.adminReviewStatus === "denied") {
       throw new Error("Payout was denied by super admin.");
     }
-    if (payout.adminReviewStatus === "frozen") {
+    if (payout.status === "pending" && payout.adminReviewStatus === "frozen") {
       throw new Error("Payout is frozen due to campaign freeze. Unfreeze the campaign first.");
     }
+    const providerKey = payout.payoutMethod?.toLowerCase() === "paypal" ? "paypal_payout" : "cashapp_payout";
+    const transferReference = args.transactionId || `${providerKey}_${Date.now()}`;
 
     await ctx.db.patch(args.payoutId, {
       status: "completed",
       completedDate: new Date().toISOString(),
-      transactionId: args.transactionId,
+      transactionId: transferReference,
+    });
+    await ctx.db.insert("transactions", {
+      userId: payout.userId,
+      campaignId: payout.userId,
+      type: "payout_disbursement",
+      amount: payout.netAmount,
+      payoutRequestId: args.payoutId,
+      status: "completed",
+      createdAt: new Date().toISOString(),
+      paymentMethod: payout.payoutMethod,
+      paymentProvider: providerKey,
+      providerTransactionId: transferReference,
     });
 
     // Update holding account
@@ -317,7 +333,13 @@ export const completePayout = mutation({
       });
     }
 
-    return { status: "success", payoutId: args.payoutId, netPaid: payout.netAmount };
+    return {
+      status: "success",
+      payoutId: args.payoutId,
+      netPaid: payout.netAmount,
+      payoutMethod: payout.payoutMethod,
+      transferReference,
+    };
   },
 });
 
