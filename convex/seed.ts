@@ -8,7 +8,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 // Real agent data from Interplanetary Fund Base44 app
-// 4 built-in agents: strategy, story, growth, communications
+// 5 built-in agents: strategy, story, growth, communications, platform_intelligence
 const REAL_AGENTS = [
   {
     name: "Strategy Agent",
@@ -105,6 +105,30 @@ const REAL_AGENTS = [
     approvalRequired: true,
     accentColor: "#fbbf24",
     version: 2,
+  },
+  {
+    name: "Platform Intelligence Agent",
+    role: "platform_intelligence",
+    purpose: "Study connected crowdfunding platforms and winning campaign patterns to raise donation rates across the network.",
+    description: "Analyzes platform-level performance, extracts repeatable success patterns from strong campaigns, and proposes weekly training itineraries with key research questions.",
+    specialization: "Cross-platform success analysis and training itinerary design",
+    status: "active",
+    trustScore: 86,
+    reliabilityScore: 84,
+    efficiencyScore: 83,
+    collaborationScore: 88,
+    capabilities: ["platform benchmarking", "successful campaign pattern analysis", "weekly training itinerary planning", "donation rate hypothesis generation"],
+    knowledgeAreas: ["crowdfunding platforms", "conversion optimization", "donor behavior", "fundraising analytics"],
+    responsibilities: ["monitor external platform trends", "identify success drivers", "propose weekly training focus", "maintain long-term learning memory"],
+    allowedActions: ["analyze_platform_performance", "create_training_itinerary", "generate_learning_questions", "recommend_campaign_improvements"],
+    restrictedActions: ["delete_campaign", "modify_payments", "publish_without_approval"],
+    permissions: ["read_campaigns", "read_platforms", "write_recommendations", "write_training_notes"],
+    toolsAvailable: ["platform analyzer", "campaign pattern scanner", "weekly training planner"],
+    workflowAccess: ["campaign", "platforms", "training", "analytics"],
+    dataAccessLevel: "write",
+    approvalRequired: true,
+    accentColor: "#818cf8",
+    version: 1,
   },
 ];
 
