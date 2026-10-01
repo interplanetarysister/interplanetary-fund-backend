@@ -238,6 +238,7 @@ export default defineSchema({
     platformFeePercent: v.number(),
     processingFeePercent: v.number(),
     processingFeeFlat: v.number(),
+    feeRevenueDestination: v.optional(v.string()),
     active: v.optional(v.boolean()),
     adminPin: v.optional(v.string()),
     updatedBy: v.string(),

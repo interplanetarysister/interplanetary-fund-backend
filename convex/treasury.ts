@@ -222,6 +222,7 @@ export const requestPayout = mutation({
     const platformFeePercent = feeConfigs?.platformFeePercent ?? 5;
     const processingFeePercent = feeConfigs?.processingFeePercent ?? 2.9;
     const processingFeeFlat = feeConfigs?.processingFeeFlat ?? 0.30;
+    const feeRevenueDestination = feeConfigs?.feeRevenueDestination ?? "interplanetarysister@gmail.com";
 
     const gross = account.totalBalance;
     const platformFee = gross * (platformFeePercent / 100);
@@ -264,6 +265,7 @@ export const requestPayout = mutation({
         availableBalance: `$${gross.toFixed(2)}`,
         youReceive: `$${net.toFixed(2)}`,
         ourFee: `$${totalFees.toFixed(2)}`,
+        feeRevenueDestination,
         method: args.payoutMethod,
         destination: args.payoutDestination,
       },
@@ -327,6 +329,7 @@ export const updateFeeConfig = mutation({
     platformFeePercent: v.number(),
     processingFeePercent: v.number(),
     processingFeeFlat: v.number(),
+    feeRevenueDestination: v.optional(v.string()),
     updatedBy: v.string(),
     adminPin: v.optional(v.string()),
   },
@@ -341,6 +344,7 @@ export const updateFeeConfig = mutation({
       platformFeePercent: args.platformFeePercent,
       processingFeePercent: args.processingFeePercent,
       processingFeeFlat: args.processingFeeFlat,
+      feeRevenueDestination: args.feeRevenueDestination ?? "interplanetarysister@gmail.com",
       active: true,
       updatedBy: args.updatedBy,
       updatedAt: new Date().toISOString(),

@@ -7,11 +7,18 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { MICHELLE_PAYOUT_DESTINATIONS } from "../../convex/withdrawalMethods";
+
+const DEFAULT_DESTINATIONS: Record<string, string> = {
+  cashapp: MICHELLE_PAYOUT_DESTINATIONS.cashapp.destination,
+  paypal: MICHELLE_PAYOUT_DESTINATIONS.paypal.destination,
+  bitcoin: MICHELLE_PAYOUT_DESTINATIONS.bitcoin.destination,
+};
 
 export default function Treasury() {
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutMethod, setPayoutMethod] = useState("cashapp");
-  const [payoutDest, setPayoutDest] = useState("");
+  const [payoutDest, setPayoutDest] = useState(DEFAULT_DESTINATIONS.cashapp);
   const [depositAmount, setDepositAmount] = useState("");
   const [depositPlatform, setDepositPlatform] = useState("GoFundMe");
   const [depositUser, setDepositUser] = useState("user1");
@@ -176,19 +183,19 @@ export default function Treasury() {
         />
         <div className="grid grid-cols-3 gap-2 mb-2">
           <button
-            onClick={() => setPayoutMethod("cashapp")}
+            onClick={() => { setPayoutMethod("cashapp"); setPayoutDest(DEFAULT_DESTINATIONS.cashapp); }}
             className={`py-2 rounded-xl text-xs font-medium ${payoutMethod === "cashapp" ? "bg-ifgreen text-white" : "bg-ifdark text-ifmuted"}`}
           >
             CashApp
           </button>
           <button
-            onClick={() => setPayoutMethod("bitcoin")}
+            onClick={() => { setPayoutMethod("bitcoin"); setPayoutDest(DEFAULT_DESTINATIONS.bitcoin); }}
             className={`py-2 rounded-xl text-xs font-medium ${payoutMethod === "bitcoin" ? "bg-ifamber text-white" : "bg-ifdark text-ifmuted"}`}
           >
             Bitcoin
           </button>
           <button
-            onClick={() => setPayoutMethod("paypal")}
+            onClick={() => { setPayoutMethod("paypal"); setPayoutDest(DEFAULT_DESTINATIONS.paypal); }}
             className={`py-2 rounded-xl text-xs font-medium ${payoutMethod === "paypal" ? "bg-ifcyan text-white" : "bg-ifdark text-ifmuted"}`}
           >
             PayPal
