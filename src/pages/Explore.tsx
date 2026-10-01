@@ -28,6 +28,7 @@ export default function Explore() {
   const createDonationIntent = useMutation(api.paymentRouter.createDonationIntent);
   const verifyBitcoinDonation = useMutation(api.paymentRouter.verifyBitcoinDonation);
   const recordInteraction = useMutation(api.interactions.recordInteraction);
+  const trackCampaignLinkClick = useMutation((api as any).postContent.trackCampaignLinkClick);
 
   const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null);
   const [donationAmount, setDonationAmount] = useState<string>("25");
@@ -39,6 +40,7 @@ export default function Explore() {
   const [intentResult, setIntentResult] = useState<any | null>(null);
   const [bitcoinQr, setBitcoinQr] = useState("");
   const [verificationResult, setVerificationResult] = useState<any | null>(null);
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
   const availableMethods = (paymentMethods?.methods || []).filter((m: any) => m.configured);
   const firstAvailableMethod = availableMethods[0]?.method as PaymentMethod | undefined;
   const isMethodAvailable = (method: PaymentMethod) => availableMethods.some((m: any) => m.method === method);
@@ -74,6 +76,52 @@ export default function Explore() {
       cancelled = true;
     };
   }, [intentResult?.bitcoin?.paymentUri]);
+
+  useEffect(() => {
+    if (deepLinkHandled || !campaigns || campaigns.length === 0) {
+      return;
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const campaignId = params.get("campaignId");
+    if (!campaignId) {
+      setDeepLinkHandled(true);
+      return;
+    }
+
+    const campaign = campaigns.find((c: any) => c.ifCampaignId === campaignId);
+    if (!campaign) {
+      setDeepLinkHandled(true);
+      return;
+    }
+
+    const sourcePlatform = params.get("sourcePlatform") || params.get("utm_source") || "unknown";
+    trackCampaignLinkClick({
+      campaignId,
+      platform: sourcePlatform,
+    }).catch(() => {});
+    recordInteraction({
+      campaignId: campaign.ifCampaignId,
+      campaignTitle: campaign.title,
+      interactionType: "click",
+    }).catch(() => {});
+
+    setSelectedCampaign(campaign);
+    setDonationAmount("25");
+    setDonorName("");
+    setDonationMessage("");
+    setIntentResult(null);
+    setVerificationResult(null);
+    setDonationStep("amount");
+    setDeepLinkHandled(true);
+
+    params.delete("campaignId");
+    params.delete("sourcePlatform");
+    params.delete("utm_source");
+    const nextQuery = params.toString();
+    const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, [campaigns, deepLinkHandled, recordInteraction, trackCampaignLinkClick]);
 
   if (campaignStatus === "LoadingFirstPage" || !stats || !balances) {
     return (

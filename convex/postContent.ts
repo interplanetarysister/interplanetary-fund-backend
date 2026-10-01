@@ -23,8 +23,15 @@ function generatePayPalLink(campaignTitle: string): string {
   return `https://www.paypal.com/donate/?${params.toString()}`;
 }
 
-function generateIFCampaignUrl(campaignId: string): string {
-  return `${IF_APP_BASE_URL}/campaign/${campaignId}`;
+function generateIFCampaignUrl(campaignId: string, platform?: string): string {
+  const params = new URLSearchParams({
+    campaignId,
+  });
+  const normalizedPlatform = platform?.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (normalizedPlatform) {
+    params.set("sourcePlatform", normalizedPlatform);
+  }
+  return `${IF_APP_BASE_URL}/?${params.toString()}`;
 }
 
 function textContainsHost(content: string | undefined, expectedHost: string): boolean {
@@ -36,6 +43,36 @@ function textContainsHost(content: string | undefined, expectedHost: string): bo
   return urls.some((url) => {
     try {
       return new URL(url).host === expectedHost;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function hasLegacyIFCampaignPath(content: string | undefined): boolean {
+  if (!content) {
+    return false;
+  }
+  const urls = content.match(/https?:\/\/[^\s<>"')]+/g) ?? [];
+  return urls.some((url) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.host === IF_APP_HOST && parsed.pathname.startsWith("/campaign/");
+    } catch {
+      return false;
+    }
+  });
+}
+
+function hasIFCampaignQueryUrl(content: string | undefined): boolean {
+  if (!content) {
+    return false;
+  }
+  const urls = content.match(/https?:\/\/[^\s<>"')]+/g) ?? [];
+  return urls.some((url) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.host === IF_APP_HOST && Boolean(parsed.searchParams.get("campaignId"));
     } catch {
       return false;
     }
@@ -169,7 +206,7 @@ function buildPlatformListing({
   const normalized = normalizePlatform(platform);
   const rules = PLATFORM_RULES[normalized] || PLATFORM_RULES.facebook;
   const paypalLink = generatePayPalLink(campaignTitle);
-  const ifCampaignUrl = generateIFCampaignUrl(campaignId);
+  const ifCampaignUrl = generateIFCampaignUrl(campaignId, platform);
   const listingTitle = truncateTitle(campaignTitle, rules.maxTitleLength);
   const baseDescription = customMessage?.trim() || campaignSummary?.trim() || "We're raising funds to make a real difference in our community.";
   const organizerLine = `Organizer account: ${ORGANIZER_EMAIL}`;
@@ -216,7 +253,7 @@ export const generatePostContent = mutation({
   },
   handler: async (ctx, args) => {
     const paypalLink = generatePayPalLink(args.campaignTitle);
-    const ifCampaignUrl = generateIFCampaignUrl(args.campaignId);
+    const ifCampaignUrl = generateIFCampaignUrl(args.campaignId, args.platform);
 
     let content = args.customMessage || "";
 
@@ -229,20 +266,6 @@ export const generatePostContent = mutation({
 
     const fullContent = content + donationBlock;
     const isFacebook = args.platform.toLowerCase().includes("facebook");
-
-    // Increment link click tracking when content is served
-    const platforms = await ctx.db
-      .query("externalPlatforms")
-      .withIndex("byCampaignId", (q) => q.eq("campaignId", args.campaignId))
-      .collect();
-    const platformRecord = platforms.find(
-      (p) => p.platform.toLowerCase() === args.platform.toLowerCase()
-    );
-    if (platformRecord) {
-      await ctx.db.patch(platformRecord._id, {
-        linkClicks: (platformRecord.linkClicks || 0) + 1,
-      });
-    }
 
     return {
       content: fullContent,
@@ -275,7 +298,7 @@ export const generateFullListing = mutation({
     };
 
     const paypalLink = generatePayPalLink(args.campaignTitle);
-    const ifCampaignUrl = generateIFCampaignUrl(args.campaignId);
+    const ifCampaignUrl = generateIFCampaignUrl(args.campaignId, args.platform);
 
     const title = args.campaignTitle.slice(0, constraints.titleMax);
 
@@ -283,12 +306,11 @@ export const generateFullListing = mutation({
     description += `Goal: $${args.campaignGoal.toLocaleString()}\n`;
     description += `Category: ${args.campaignCategory}\n\n`;
     description += `Every contribution makes a difference. Together we can reach this goal!\n\n`;
+    description += `💝 Campaign page: ${ifCampaignUrl}\n`;
     if (constraints.allowsDonateLink) {
-      description += `💝 Donate & learn more: ${ifCampaignUrl}\n`;
       description += `PayPal: ${paypalLink}\n`;
-    } else {
-      description += `Thank you for your support!`;
     }
+    description += `Thank you for your support!`;
     description = description.slice(0, constraints.descMax);
 
     // Save as a distributed post with listingType = "full_listing"
@@ -341,17 +363,23 @@ export const fixDistributedPostUrls = mutation({
     let fixed = 0;
     for (const post of posts) {
       const hasBase44Url = textContainsHost(post.content, BASE44_APP_HOST);
-      const missingIfUrl = !textContainsHost(post.content, IF_APP_HOST);
-      if (hasBase44Url || missingIfUrl) {
-        const ifUrl = generateIFCampaignUrl(post.campaignId);
+      const hasLegacyIfPath = hasLegacyIFCampaignPath(post.content);
+      const missingQueryIfUrl = !hasIFCampaignQueryUrl(post.content);
+      if (hasBase44Url || hasLegacyIfPath || missingQueryIfUrl) {
+        const ifUrl = generateIFCampaignUrl(post.campaignId, post.platform);
         let newContent = post.content || "";
         // Replace any Base44 URL
         newContent = newContent.replace(
           /https:\/\/base44-dispatcher-production\.base44\.workers\.dev\/campaign\/[^\s\n]*/g,
           ifUrl
         );
+        // Replace legacy IF app /campaign/:id URL
+        newContent = newContent.replace(
+          /https:\/\/interplanetary-fund\.vercel\.app\/campaign\/[^\s\n]*/g,
+          ifUrl
+        );
         // If still no IF app URL, append it
-        if (!textContainsHost(newContent, IF_APP_HOST)) {
+        if (!hasIFCampaignQueryUrl(newContent)) {
           newContent += `\n\n🔗 Campaign page: ${ifUrl}`;
         }
         await ctx.db.patch(post._id, {
@@ -376,7 +404,7 @@ export const auditPostLinks = query({
       return !p.content || !p.content.includes("paypal.com/donate");
     });
     const wrongUrl = posts.filter(
-      (p) => textContainsHost(p.content, BASE44_APP_HOST)
+      (p) => textContainsHost(p.content, BASE44_APP_HOST) || hasLegacyIFCampaignPath(p.content)
     );
     return {
       totalPosts: posts.length,
@@ -406,7 +434,7 @@ export const fixMissingPayPalLinks = mutation({
     for (const post of missingLinks) {
       const campaignTitle = post.campaignTitle || "Interplanetary Fund";
       const link = generatePayPalLink(campaignTitle);
-      const ifUrl = generateIFCampaignUrl(post.campaignId);
+      const ifUrl = generateIFCampaignUrl(post.campaignId, post.platform);
       const donationBlock = `\n\n💝 Donate now: ${ifUrl}\nPayPal: ${link}\nThank you! 🙏`;
 
       await ctx.db.patch(post._id, {
@@ -673,5 +701,37 @@ export const markPostFailed = mutation({
       postedAt: new Date().toISOString(),
     });
     return { status: "success" };
+  },
+});
+
+// Track campaign-link click-throughs from platform posts
+export const trackCampaignLinkClick = mutation({
+  args: {
+    campaignId: v.string(),
+    platform: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const normalizedPlatform = normalizePlatform(args.platform);
+    const platformRows = await ctx.db
+      .query("externalPlatforms")
+      .withIndex("byCampaignId", (q) => q.eq("campaignId", args.campaignId))
+      .collect();
+
+    const matching = platformRows.find(
+      (row) => normalizePlatform(row.platform) === normalizedPlatform
+    );
+    if (matching) {
+      await ctx.db.patch(matching._id, {
+        linkClicks: (matching.linkClicks || 0) + 1,
+        lastSynced: new Date().toISOString(),
+      });
+    }
+
+    return {
+      status: "success",
+      tracked: Boolean(matching),
+      campaignId: args.campaignId,
+      platform: normalizedPlatform,
+    };
   },
 });
