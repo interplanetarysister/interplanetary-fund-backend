@@ -1,32 +1,26 @@
-name: Repair dependency lockfile
+# Archived legacy repository: workflows only run when an owner explicitly dispatches.
+# No scheduled checks, no builds, no external publishing and no deployments.
+# All real app code, actions, and user authorization belong to interplanetary-fund2.
+name: "IFund Live — Backend health"
 
 on:
-  push:
-    branches:
-      - dependabot/npm_and_yarn/npm_and_yarn-f2975561e8
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  regenerate-lockfile:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  live-service-review:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-      - name: Regenerate lockfile without running package scripts
-        run: npm install --package-lock-only --ignore-scripts
-      - name: Verify clean install contract
-        run: npm ci --ignore-scripts
-      - name: Upload corrected lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: corrected-package-lock
-          path: package-lock.json
-          retention-days: 1
+      - name: Verify live IFund (read-only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "This is an on-demand IFund production diagnostic. Source and user actions are owned by interplanetary-fund2."
+          curl --fail --silent --show-error --location --max-time 20 https://interplanetaryfund.com/ -o /tmp/ifund-home.html
+          grep -Eiq '<html|<!doctype' /tmp/ifund-home.html
+          curl --fail --silent --show-error --location --max-time 20 https://interplanetaryfund.com/api/health -o /tmp/ifund-health.json
+          node -e "JSON.parse(require('fs').readFileSync('/tmp/ifund-health.json','utf8'))"
+          echo "Completed read-only IFund live-service checks. No user content, payment or deployment was changed."
